@@ -1,0 +1,23 @@
+# Files related to VIM
+*.swp
+mysession.vim
+
+# Binary directory
+/build
+
+# Other binaries
+__pycache__
+
+# Debian packaging files
+/obj-*
+/debian/*
+!/debian/changelog
+!/debian/compat
+!/debian/control
+!/debian/copyright
+!/debian/*.install
+!/debian/rules
+!/debian/source
+
+# A place to test
+/playground
