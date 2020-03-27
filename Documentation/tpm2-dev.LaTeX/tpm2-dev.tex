@@ -12,6 +12,8 @@
 \usepackage{algpseudocode}
 \usepackage{algorithm}
 \usepackage{algorithmicx}
+\usepackage{tikz}
+\usetikzlibrary{automata, positioning, arrows, shapes.geometric}
 
 \newcommand{\file}[1]{\texttt{#1}}
 \newcommand{\program}[1]{\textbf{#1}}
@@ -40,7 +42,8 @@
 		\item A faster package database. Namely I'm going to use Sqlite3.
 		\item The ability to adopt existing files. Not sure if this was the original plan back then, but I always felt like I need a better way to find conflicting packages than checking if their files are already in place before unpacking them.
 		\item Source package version numbers shall be supported by the package manager. I always want it to be as slim as possible and not getting bloated with other stuff a package manager should not handle, but this seems very essential. Especially as the binary version numbers are difficult to understand in the context of microversioning. And I definitely don't want to end up doing something like \textit{"openssl-1.0.1h-2020.48.3097623"}.
-		\item Not sure but I'm don't think the Ocaml code is exactly bleeding edge fast.
+		\item Truly support moving files between packages and therefore truly support conflicting packages. That is somewhat linked with adopting existing files as it requires the common base: conflicting packages.
+		\item Not sure but I don't think the Ocaml code is exactly bleeding edge fast.
 		\item More maintainer scripts (borrowed that term from Debian) and a more sensible way of using them (look at what rpm / dpkg does ...).
 	\end{itemize}
 
@@ -120,5 +123,91 @@
 	There is one more important case that I would like to note here: pre-dependencies could require the same package as regular dependencies. But the required version must be the same, otherwise the package manager would have to change a dependency's version during the installation of the dependent package. I can't think of a legitimate use case for this, and avoiding that makes things easier. The installation graph needs only one set of nodes.
 	
 	Additionally pre-dependencies should also be available to the postrm script as the package is not configured anymore when the package manager runs it. Hence it is probably a good idea to keep them while the depending package is installed to avoid having to install another package first before a package can be uninstalled.
+	
+	
+	\section{PackageDB}
+	\label{sec:packagedb}
+	
+	''\module{PackageDB}'' or ''\module{package\_db}'' is the package manager's database, which stores the installed packages, their states and which files are installed. The latter is especially interesting since one has to decide which attributes of files to store. For now I decided to use the following simple schema:
+	
+	\begin{table}[H]
+		\centering
+		
+		\begin{tabular}{ll}
+			schema\_version: & \underline{version:varchar} \\
+			packages: & \underline{name:varchar}, \underline{arch:integer}, \underline{version:varchar}, state:int, source\_version:varchar \\
+			files: & \underline{path:varchar}, \underline{pkg\_name:varchar}, \underline{pkg\_arch}, \underline{version:varchar}, digest:varchar \\
+		\end{tabular}
+	
+		\caption{The database schema of \module{PackageDB}}
+		\label{tab:the_database_schema_of_packagedb}
+	\end{table}
+	
+	It does not store file attributes at all. This deviates from the aforementioned ideal of a package manager which knows all files, but makes the implementation easier. At least for now I don't see why having the stricter version could bring a big benefit in my current and mid-term practice. If that arises it can easily be added due to versioned db schemata, anyway. The digest field contains a hash of the file's content. It may be prefixed with something like ''\texttt{sha512:}'' to indicate the used algorithm. If not prefix is present, the algorithm shall be sha1. It's not like super-safety but a considerable measure of integrity protection.
+	
+	
+	\section{Package states}
+	\label{sec:package_states}
+	
+	At any point in time a package that is part of the system has a state. This state describes if it is fully part of the system or in a, say, transitional state, where the package manager needs to do more work until the package's invariants are fulfilled. State transitions are atomic operations of the package manager. As such, these must be idempotent to allow for repeating them if they were interrupted. Figures \ref{fig:package_states_install}, \ref{fig:package_states_remove} and \ref{fig:package_states_change} describe the possible state transitions and which actions go with them when installing, removing or changing a package. The latter needs to consider the old and the new version of a package. ''change'' refers to upgrading or downgrading. As a package's files may be replaced by multiple packages or multiple packages' files may be consumed by one package, this is the most complicated procedure and it involves more than one package.
+	
+	In other words, as long as no conflicting packages are part of the system it's easy. Conflicting packages can be there in transient states, however not in an accepted state (i.e. configured).
+	
+	\begin{figure}[ht]
+		\centering
+		
+		\begin{tikzpicture}[
+				->,
+				>=stealth',
+				node distance=5.5cm,
+				every state/.style={thick, fill=blue!10, rectangle},
+				initial text=$ $]
+			
+			\node[state, initial] (wanted) {wanted};
+			\node[state, right of=wanted] (preinst_begin) {preinst\_begin};
+			\node[state, right of=preinst_begin] (unpack_begin) {unpack\_begin};
+			\node[state, below of=unpack_begin] (configure_begin) {configure\_begin};
+			\node[state, accepting, left of=configure_begin] (configured) {configured};
+			
+			\draw	(wanted) edge[above, bend left] node{$ $} (preinst_begin)
+					(preinst_begin) edge[above, bend left] node{\program{preinst} = 0} (unpack_begin)
+					(unpack_begin) edge[right, bend left] node{\textit{unpack}} (configure_begin)
+					(configure_begin) edge[below, bend left] node{\program{configure} = 0} (configured);
+					
+			\draw 	(preinst_begin) edge[below, bend left] node{\program{prerm abort}} (wanted)
+					(unpack_begin) edge[below, bend left] node{\textit{rm files}} (preinst_begin);
+			
+			
+		\end{tikzpicture}
+		
+		\caption{Package states during installation}
+		\label{fig:package_states_install}
+	\end{figure}
+
+	The ''begin'' states are required to be undo operations only once they were started. Otherwise the package manager would i.e. have to run \program{unconfigure} again when in state unpacked, even though some files may have been removed already. \program{unconfigure} may fail then. It is not required for all states but then some operations have to redo work. That is not a problem since maintainer scripts must be idempotent anyway (consider the package manager was interrupted just before it committed to the db that a script was run). One can view the system not as having states as points in time where one operation ended and the next one will begin but one operation ended some time ago and the next one may have begun already. That indicates the direction that the last operation that induced a state change took and allows to restart from there after an interruption, only redoing this one operation rather than having to consider all directions. This limits idempotence to one operation and not one operation and its predecessor.
+	
+	I would not need that indication of direction if I only considered one process, like only install. But I always need at least both.
+	
+	The state ''wanted'' only exists because packages may lie around in memory while they're not installed yet and need to have a state. And because I did not want a tristate-like type for it. It does not need to be stored in the db.
+	
+	Table \ref{tab:required_package_states} summarizes the states a package can be in.
+	
+	\begin{table}[ht]
+		\centering
+		
+		\begin{itemize}
+			\item wanted
+			\item preinst\_begin
+			\item unpack\_begin
+			\item configure\_begin
+			\item configure
+			\item unconfigure\_begin
+			\item rm\_files\_begin
+			\item postrm\_begin
+		\end{itemize}
+		
+		\caption{Required package states}
+		\label{tab:required_package_states}
+	\end{table}
 	
 \end{document}

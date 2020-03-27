@@ -10,6 +10,13 @@
 #include "installation.h"
 #include "parameters.h"
 #include "package_db.h"
+#include "utility.h"
+
+extern "C" {
+#include <sys/types.h>
+#include <sys/stat.h>
+}
+
 
 using namespace std;
 
@@ -90,6 +97,10 @@ struct ParserState
 int _main(int argc, char** argv)
 {
 	auto params = make_shared<Parameters>();
+
+	/* Set the umask to a defined value such that directories and files are
+	 * created with right permissions. */
+	umask (S_IWGRP | S_IWOTH);
 
 	/* A simple DFA-like commandline parser */
 	ParserState state;
@@ -200,7 +211,7 @@ int _main(int argc, char** argv)
 		{
 			if (state.target == state.AWAITING)
 			{
-				params->target = parameter;
+				params->target = get_absolute_path (parameter);
 				state.target = state.SPECIFIED;
 			}
 			else

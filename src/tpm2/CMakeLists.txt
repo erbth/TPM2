@@ -13,4 +13,4 @@ add_executable(tpm2
 
 
 target_include_directories(tpm2 PRIVATE ${SQLITE3_INCLUDE_DIRS})
-target_link_libraries(tpm2 ${SQLITE3_LIBRARIES})
+target_link_libraries(tpm2 ${SQLITE3_LIBRARIES} stdc++fs)

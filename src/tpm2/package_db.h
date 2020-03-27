@@ -10,6 +10,7 @@
 #include <sqlite3.h>
 #include <exception>
 #include "parameters.h"
+#include "package_meta_data.h"
 
 
 class PackageDB
@@ -21,20 +22,46 @@ private:
 	sqlite3 *pDb = nullptr;
 
 public:
+	/* This may create a new database if none is already present together with
+	 * the directory it resides in. It does not applay specific permissions on
+	 * the directories and the database file so the process's umask must be set
+	 * accordingly. */
 	PackageDB(std::shared_ptr<Parameters> params);
 	~PackageDB();
+
+
+	std::vector<std::shared_ptr<PackageMetaData>> get_packages_in_state(const int state);
+
+
+private:
+	void begin();
+	void rollback();
+	void commit();
+
+	void ensure_schema();
 };
 
 
 /********************************* Exceptions *********************************/
-class sqlitedb_exception : public std::exception
+class PackageDBException : public std::exception
 {
 protected:
 	std::string msg;
 
 public:
+	PackageDBException ();
+	PackageDBException (const std::string& msg);
+
+	virtual ~PackageDBException();
+
+	const char *what() const noexcept override;
+};
+
+
+class sqlitedb_exception : public PackageDBException
+{
+public:
 	sqlitedb_exception(int err, sqlite3 *db = nullptr);
-	const char *what() const noexcept;
 };
 
 

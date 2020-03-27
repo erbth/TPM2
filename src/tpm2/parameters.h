@@ -9,6 +9,7 @@
 
 #include <string>
 #include <vector>
+#include "tpm2_config.h"
 
 enum operation_type {
 	OPERATION_INVALID,
@@ -28,9 +29,8 @@ enum operation_type {
 };
 
 /* Most parameters are public to allow for easier access. */
-class Parameters
+struct Parameters
 {
-public:
 	std::string target = "/";
 
 	/* The operation to perform along with the packages on which it shall be

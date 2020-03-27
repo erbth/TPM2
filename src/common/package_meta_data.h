@@ -13,6 +13,12 @@
 #include "version_number.h"
 
 
+#define PKG_STATE_WANTED				0
+
+/* Only for selecting packages */
+#define ALL_PKG_STATES					1000
+
+
 /* This class represents a package in memory. It shall be returned by the
  * package providing module from repositories, depres shall use it and finally
  * the install module can find information about the package here. */
@@ -26,6 +32,8 @@ struct PackageMetaData
 
 	DependencyList pre_dependencies;
 	DependencyList dependencies;
+
+	int state;
 
 	// FileList files;
 
