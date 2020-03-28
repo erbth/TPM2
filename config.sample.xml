@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<tpm file_version="2.0">
+	<default_arch>amd64</default_arch>
+	<repo type="dir">/home/therb/projects/other/TPM/playground/repo</repo>
+</tpm>

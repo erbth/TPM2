@@ -4,10 +4,12 @@ using namespace std;
 
 
 PackageMetaData::PackageMetaData(const string &name, const int architecture,
-		const VersionNumber &version, const VersionNumber &source_version)
+		const VersionNumber &version, const VersionNumber &source_version,
+		char installation_reason, int state)
 	:
 		name(name), architecture(architecture),
-		version(version), source_version(source_version)
+		version(version), source_version(source_version),
+		installation_reason(installation_reason), state(state)
 {
 }
 

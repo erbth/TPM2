@@ -19,6 +19,7 @@
 \newcommand{\program}[1]{\textbf{#1}}
 \newcommand{\variable}[1]{'\texttt{#1}'}
 \newcommand{\module}[1]{\texttt{#1}}
+\newcommand{\script}[1]{\texttt{#1}}
 
 \newcommand{\green}[1]{\textcolor{green}{#1}}
 
@@ -133,17 +134,39 @@
 	\begin{table}[H]
 		\centering
 		
-		\begin{tabular}{ll}
+		{
+		\setlength{\extrarowheight}{0.5eM}
+		\begin{tabularx}{\textwidth}{lX}
 			schema\_version: & \underline{version:varchar} \\
-			packages: & \underline{name:varchar}, \underline{arch:integer}, \underline{version:varchar}, state:int, source\_version:varchar \\
+			packages: & \underline{name:varchar}, \underline{arch:integer}, \underline{version:varchar}, source\_version:varchar, installation\_reason:integer, state:integer \\
 			files: & \underline{path:varchar}, \underline{pkg\_name:varchar}, \underline{pkg\_arch}, \underline{version:varchar}, digest:varchar \\
-		\end{tabular}
+			pre\_dependencies: & \underline{pkg\_name:varchar}, \underline{pkg\_architecture:integer}, \underline{pkg\_version:varchar}, \underline{name:varchar}, \underline{architecture:integer}, constraints:varchar \\
+			dependencies: & \underline{pkg\_name:varchar}, \underline{pkg\_architecture:integer}, \underline{pkg\_version:varchar}, \underline{name:varchar}, \underline{architecture:integer}, constraints:varchar \\
+		\end{tabularx}
+		}
 	
 		\caption{The database schema of \module{PackageDB}}
 		\label{tab:the_database_schema_of_packagedb}
 	\end{table}
 	
 	It does not store file attributes at all. This deviates from the aforementioned ideal of a package manager which knows all files, but makes the implementation easier. At least for now I don't see why having the stricter version could bring a big benefit in my current and mid-term practice. If that arises it can easily be added due to versioned db schemata, anyway. The digest field contains a hash of the file's content. It may be prefixed with something like ''\texttt{sha512:}'' to indicate the used algorithm. If not prefix is present, the algorithm shall be sha1. It's not like super-safety but a considerable measure of integrity protection.
+	
+	
+	\subsection{Storing constraints}
+	\label{ssec:storing_constraints}
+	
+	Constraints are predicate logical formulae. To easily store them, they can be converted to an invertible string representation. This allows for very compact storage compared to storing i.e. every predicate in a separate tuple. An only drawback may be that db-level analysis cannot be performed on them, but I see no interesting use case for this now. At least none that must be that fast that reading the entire table and processing it in memory cannot be justified with complexity reduction. Those applications may read the constraints together with the rest of the packages, anyway, and then it's just a question of which representation is faster, and again, there are not that many packages ...
+	
+	
+	\subsection{Installation reasons}
+	\label{ssec:installation_reasons}
+	
+	Basically there are two reasons why a user wants a package to be installed:
+	
+	\begin{description}
+		\item[auto] The package was installed because other packages depend on it.
+		\item[manual] The package was installed because the user wants it.
+	\end{description}
 	
 	
 	\section{Package states}
@@ -209,5 +232,123 @@
 		\caption{Required package states}
 		\label{tab:required_package_states}
 	\end{table}
+
+
+	\section{Files and their formats}
+	\label{sec:files_and_their_formats}
+	
+	\subsection{\file{desc.xml}}
+	\label{ssec:desc.xml}
+	
+	\dirtree{.1 <sw file\_version=''1.1''> | <conf file\_version=''1.1''>.
+		.2 <name>.
+		.2 <version> \DTcomment{\{x.y.z\} with integer values x, y, z}.
+		.2 <arch> \DTcomment{\{i386 | amd64\}}.
+		.2 <file> \DTcomment{non-config file}.
+		.2 <cfile sha512sum= > \DTcomment{config file}.
+		.2 <dir> \DTcomment{directory}.
+		.2 <rdep> \DTcomment{runtime dependency (package name)}.
+	}
+	
+	\vspace{1em}
+	The file, cfile, dir and rdep elements must be sorted ascending by their values according to OCaml's built in string comparison (uppercase letters are 'smaller' than lowercase letters)
+	
+	
+	\subsection{\file{status.db}}
+	\label{ssec:status.db}
+	
+	This is the package manager's main database in which it stores the state of the system. It is located in the \file{/var/lib/tpm} directory.
+
+
+	\subsection{\file{config.xml}}
+	\label{ssec:config.xml}
+	
+	This file configures how the package manager operates. It is located in the \file{/etc/tpm} directory.
+	
+	\noindent
+	\dirtree{.1 <tpm file\_version=''2.0''>.
+		.2 <repo type= \{dir\}> \DTcomment{path to Directory Repository}.
+		.2 <default\_arch> \DTcomment{\{i386 | amd64\}}.
+	}
+
+	
+	\section{Repository formats}
+	\label{sec:repository_formats}
+	
+	
+	\subsection{Directory Repository}
+	\label{ssec:directory_repository}
+	
+	Directory Repositories are directory trees of the following format:
+	
+	\vspace{1em}	
+	\noindent
+	\begin{tabular}{rl}
+		\file{\dots/} & \file{<arch>/<package-X1\_Y1.tpm.tar} \\
+		& \hspace{0.5cm} $\vdots$ \\
+		& \file{<arch>/<package-Xn\_Yn.tpm.tar} \\
+	\end{tabular}
+
+	\vspace{1em}
+	Their type in \file{config.xml} is \texttt{dir}.
+	
+	
+	\section{A new transport form}
+	\label{sec:a_new_transport_form}
+	
+	TPM version 1 used tar archives composed of a control file, maintainer scripts and another (compressed) tar archive as transport or packed form of packages. For TPM 2 I want to change a few things. It should just be one tar archive for the files, or rather an archive I can easily read and possibly extract (to adopt files) by hand. This removes the requirement of having a file list be duplicated together with hash sums for config files in the meta data. With TPM 2 this becomes even more important as virtually all file attributes need to be accessed by the package manager directly and not just an external archiver to decide if and if yes how to adopt files already present prior to installing a package. And I don't think I still need to extract the outer archive or single elements from it to a temporary location before reading them. I'm grown up enough to do this in memory or even better on the fly with streams or something similar.
+	
+	So I propose the following format: The transport form consists of different sections that are concatenated together. In the beginning is a table of contents to easily seek to specific section. It also delimits the individual sections such that no special deliminating length-header like thing is required in each one. It looks like the following:
+	
+	\vspace{1eM}
+	
+	\begin{center}
+		\begin{tabular}{|l|c|c|c|}
+			\hline
+			Address & \multicolumn{3}{c|}{data} \\
+			\hline
+			0x0000 & major version: u8 (= 1) & count of sections: u8 & \\
+			\hline
+			0x0002 & section type: u8 & start: u32 & size: u32 \\
+			\hline
+			0x0009 & section type: u8 & start: u32 & size: u32 \\
+			\hline
+			\multicolumn{4}{|c|}{$\vdots$} \\
+			\hline
+		\end{tabular}
+	\end{center}
+	
+	\vspace{1eM}
+	
+	Since multi-byte integers are stored, but files usually have a word size of one byte, one needs to decide upon a serialization scheme, so big- or little endian. Everybody always says big endian or more imposing \texttt{network byte order}. I like that, too, and use it all over the place. But here I deal with a lot of little endian systems, actually in the beginning only those. So I decided to be different in that point and use little endian. Remember, that's were the more significant bytes go upwards to the higher addresses ...
+	
+	The futuristic may scream now '32 bit is outdated!' - but really? You ever think there'll be a package with more than 4g in the near future?
+
+	
+	\vspace{1eM}	
+	I moreover need different section types:
+	
+	\vspace{1em}
+
+	\begin{tabularx}{\textwidth}{c|c|X}
+		Identifier & Required & Description \\
+		\hline
+		0x00 & yes & meta data (like former \file{desc.xml}) \\
+		0x01 & no & \script{preinst} script \\
+		0x02 & no & \script{configure} script \\
+		0x03 & no & \script{unconfigure} script \\
+		0x04 & no & \script{postrm} script \\
+		0x80 & no & The file archive \\
+		0xf0 & no & A OpenPGP signature \\
+	\end{tabularx}
+
+	\vspace{1eM}
+	
+	All text like scripts shall be utf8-encoded, binary data is binary data. The sections must appear in the order they're listed in the table. For the signature it's very natural to be the last part, such that it can be appended like a detached signature. For the other sections it's not that imposed but it should be at least good manner to have the metadata first. Not sure if I'll keep this strict ordering requirement forever. Well, at least the easy-to-skip parts should come first (if they ever have to be skipped) because seeking in a compressed form of such a file is very expensive.
+	
+	
+	\subsection{Compression}
+	
+	By the way, compression. The archive maybe compressed using any technique one likes, and that the package manager supports.
 	
 \end{document}

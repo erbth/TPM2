@@ -13,12 +13,14 @@ extern "C" {
 using namespace std;
 
 
-void print_target(shared_ptr<Parameters> params)
+void print_target(shared_ptr<Parameters> params, bool to_stderr)
 {
+	FILE* stream = to_stderr ? stderr : stdout;
+
 	if (params->target_is_native())
-		printf ("Runtime system is native\n");
+		fprintf (stream, "Runtime system is native\n");
 	else
-		printf ("Runtime system is at \"%s\"\n", params->target.c_str());
+		fprintf (stream, "Runtime system is at \"%s\"\n", params->target.c_str());
 }
 
 

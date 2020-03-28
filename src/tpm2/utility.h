@@ -9,7 +9,7 @@
 #include <string>
 #include "parameters.h"
 
-void print_target(std::shared_ptr<Parameters> params);
+void print_target(std::shared_ptr<Parameters> params, bool to_stderr = false);
 
 /* Get the abslute path of a potentially relaive path.
  *

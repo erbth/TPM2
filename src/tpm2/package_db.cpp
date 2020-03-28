@@ -274,8 +274,9 @@ void PackageDB::ensure_schema()
 						"name varchar,"
 						"architecture integer,"
 						"version varchar,"
-						"state integer,"
-						"source_version varchar,"
+						"source_version varchar not null,"
+						"state integer not null,"
+						"installation_reason integer not null,"
 						"primary key (name, architecture, version));",
 					nullptr, nullptr, nullptr);
 
@@ -288,7 +289,7 @@ void PackageDB::ensure_schema()
 						"pkg_name varchar,"
 						"pkg_architecture integer,"
 						"pkg_version varchar,"
-						"digest varchar,"
+						"digest varchar not null,"
 						"primary key (path, pkg_name, pkg_architecture, pkg_version),"
 						"foreign key (pkg_name, pkg_architecture, pkg_version)"
 							"references packages (name, architecture, version));",
@@ -296,6 +297,41 @@ void PackageDB::ensure_schema()
 
 			if (err != SQLITE_OK)
 				throw sqlitedb_exception (err, pDb);
+
+
+			err = sqlite3_exec (pDb,
+					"create table pre_dependencies ("
+						"pkg_name varchar,"
+						"pkg_architecture integer,"
+						"pkg_version varchar,"
+						"name varchar,"
+						"architecture integer,"
+						"constraints varchar not null,"
+						"primary key (pkg_name, pkg_architecture, pkg_version, name, architecture),"
+						"foreign key (pkg_name, pkg_architecture, pkg_version)"
+							"references packages (name, architecture, version));",
+					nullptr, nullptr, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+
+			err = sqlite3_exec (pDb,
+					"create table dependencies ("
+						"pkg_name varchar,"
+						"pkg_architecture integer,"
+						"pkg_version varchar,"
+						"name varchar,"
+						"architecture integer,"
+						"constraints varchar not null,"
+						"primary key (pkg_name, pkg_architecture, pkg_version, name, architecture),"
+						"foreign key (pkg_name, pkg_architecture, pkg_version)"
+							"references packages (name, architecture, version));",
+					nullptr, nullptr, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
 
 			/* Set schema version */
 			err = sqlite3_exec (pDb,
@@ -320,10 +356,268 @@ vector<shared_ptr<PackageMetaData>> PackageDB::get_packages_in_state(const int s
 {
 	sqlite3_stmt *pStmt = nullptr;
 
-	vector<shared_ptr<PackageMetaData>> 
+	vector<shared_ptr<PackageMetaData>> pkgs;
 
 	try
 	{
+		int err;
+		
+		if (state == ALL_PKG_STATES)
+		{
+			err = sqlite3_prepare_v2 (pDb,
+					"select name, architecture, version, source_version, installation_reason, state "
+					"from packages;",
+					-1, &pStmt, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+		}
+		else
+		{
+			err = sqlite3_prepare_v2 (pDb,
+					"select name, architecture, version, source_version, installation_reason, state "
+					"from packages where state=?;",
+					-1, &pStmt, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+
+			err = sqlite3_bind_int (
+					pStmt,
+					1,
+					state);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+		}
+
+
+		for (;;)
+		{
+			err = sqlite3_step (pStmt);
+
+			if (err == SQLITE_DONE)
+			{
+				break;
+			}
+			else if (err != SQLITE_ROW)
+			{
+				throw sqlitedb_exception (err, pDb);
+			}
+			else
+			{
+				if (sqlite3_column_count (pStmt) != 6)
+					throw PackageDBException ("Invalid column count in get_packages_in_state");
+
+				string name = (const char*) sqlite3_column_text (pStmt, 0);
+				int architecture = sqlite3_column_int (pStmt, 1);
+				VersionNumber v((const char*) sqlite3_column_text (pStmt, 2));
+				VersionNumber sv((const char*) sqlite3_column_text (pStmt, 3));
+				char reason = (char) sqlite3_column_int (pStmt, 4);
+				int state = sqlite3_column_int (pStmt, 5);
+
+				auto pkg = make_shared<PackageMetaData> (
+						name, architecture, v, sv, reason, state);
+
+
+				/* Get the pre-dependencies of this package */
+				sqlite3_stmt *pStmt2 = nullptr;
+				auto vs = v.to_string();
+
+
+				try
+				{
+					err = sqlite3_prepare_v2 (pDb,
+							"select name, architecture, constraints "
+							"from pre_dependencies "
+							"where pkg_name = ? and "
+								"pkg_architecture = ? "
+								"and pkg_version = ?;",
+							-1,
+							&pStmt2,
+							nullptr);
+
+					if (err != SQLITE_OK)
+						throw sqlitedb_exception (err, pDb);
+
+
+					err = sqlite3_bind_text (
+							pStmt2,
+							1,
+							name.c_str(),
+							name.size(),
+							SQLITE_STATIC);
+
+					if (err != SQLITE_OK)
+						throw sqlitedb_exception (err, pDb);
+
+
+					err = sqlite3_bind_int (
+							pStmt2,
+							2,
+							architecture);
+
+					if (err != SQLITE_OK)
+						throw sqlitedb_exception (err, pDb);
+
+
+					err = sqlite3_bind_text (
+							pStmt2,
+							3,
+							vs.c_str(),
+							vs.size(),
+							SQLITE_STATIC);
+
+					if (err != SQLITE_OK)
+						throw sqlitedb_exception (err, pDb);
+
+
+					for (;;)
+					{
+						err = sqlite3_step (pStmt2);
+
+						if (err == SQLITE_DONE)
+						{
+							break;
+						}
+						else if (err != SQLITE_ROW)
+						{
+							throw sqlitedb_exception (err, pDb);
+						}
+						else
+						{
+							if (sqlite3_column_count (pStmt2) != 3)
+								throw PackageDBException ("Invalid column "
+										"count while selecting pre-dependencies");
+
+
+							auto constraints = PackageConstraints::Formula::from_string (
+									(const char*) sqlite3_column_text (pStmt2, 2));
+
+							if (!constraints)
+								throw PackageDBException ("Invalid constraint string \"" +
+										string ((const char*) sqlite3_column_text (pStmt2, 2)));
+
+
+							pkg->add_pre_dependency (Dependency (
+									(const char*) sqlite3_column_text (pStmt2, 0),
+									sqlite3_column_int (pStmt2, 1),
+									constraints));
+						}
+					}
+
+					sqlite3_finalize (pStmt2);
+					pStmt2 = nullptr;
+				}
+				catch (...)
+				{
+					if (pStmt2)
+						sqlite3_finalize (pStmt2);
+
+					throw;
+				}
+
+
+				/* Get the dependencies of this package */
+				try
+				{
+					err = sqlite3_prepare_v2 (pDb,
+							"select name, architecture, constraints "
+							"from dependencies "
+							"where pkg_name = ? and "
+								"pkg_architecture = ? "
+								"and pkg_version = ?;",
+							-1,
+							&pStmt2,
+							nullptr);
+
+					if (err != SQLITE_OK)
+						throw sqlitedb_exception (err, pDb);
+
+
+					err = sqlite3_bind_text (
+							pStmt2,
+							1,
+							name.c_str(),
+							name.size(),
+							SQLITE_STATIC);
+
+					if (err != SQLITE_OK)
+						throw sqlitedb_exception (err, pDb);
+
+
+					err = sqlite3_bind_int (
+							pStmt2,
+							2,
+							architecture);
+
+					if (err != SQLITE_OK)
+						throw sqlitedb_exception (err, pDb);
+
+
+					err = sqlite3_bind_text (
+							pStmt2,
+							3,
+							vs.c_str(),
+							vs.size(),
+							SQLITE_STATIC);
+
+					if (err != SQLITE_OK)
+						throw sqlitedb_exception (err, pDb);
+
+
+					for (;;)
+					{
+						err = sqlite3_step (pStmt2);
+
+						if (err == SQLITE_DONE)
+						{
+							break;
+						}
+						else if (err != SQLITE_ROW)
+						{
+							throw sqlitedb_exception (err, pDb);
+						}
+						else
+						{
+							if (sqlite3_column_count (pStmt2) != 3)
+								throw PackageDBException ("Invalid column "
+										"count while selecting dependencies");
+
+
+							auto constraints = PackageConstraints::Formula::from_string (
+									(const char*) sqlite3_column_text (pStmt2, 2));
+
+							if (!constraints)
+								throw PackageDBException ("Invalid constraint string \"" +
+										string((const char*) sqlite3_column_text (pStmt2, 2)));
+
+
+							pkg->add_dependency (Dependency (
+									(const char*) sqlite3_column_text (pStmt2, 0),
+									sqlite3_column_int (pStmt2, 1),
+									constraints));
+						}
+					}
+
+					sqlite3_finalize (pStmt2);
+					pStmt2 = nullptr;
+				}
+				catch (...)
+				{
+					if (pStmt2)
+						sqlite3_finalize (pStmt2);
+
+					throw;
+				}
+
+				/* Add the package to the list to return */
+				pkgs.push_back (pkg);
+			}
+		}
+
+		sqlite3_finalize (pStmt);
 	}
 	catch (...)
 	{

@@ -8,6 +8,7 @@
 
 #include <exception>
 #include <memory>
+#include <string>
 #include "version_number.h"
 
 
@@ -26,6 +27,15 @@ namespace PackageConstraints
 		 * @sv Source version number
 		 * @bv Binary version number */
 		virtual bool fulfilled(const VersionNumber &sv, const VersionNumber &bv) const = 0;
+
+		/* Returns an invertible string representation. true and false maybe
+		 * represented by And(nullptr, nullptr) and Or(nullptr, nullptr),
+		 * respectively. */
+		virtual std::string to_string() const = 0;
+
+		/* Converts a string to a formula. Returns nullptr if the string is
+		 * invalid. */
+		static std::shared_ptr<Formula> from_string(const std::string&);
 	};
 
 
@@ -50,6 +60,8 @@ namespace PackageConstraints
 		virtual ~PrimitivePredicate();
 
 		bool fulfilled(const VersionNumber &sv, const VersionNumber &bv) const override;
+
+		std::string to_string() const override;
 	};
 
 
@@ -60,10 +72,14 @@ namespace PackageConstraints
 		const std::shared_ptr<const Formula> right;
 
 	public:
+		/* nullptr means neutral element, however on its own it's not a valid
+		 * formula */
 		And(std::shared_ptr<const Formula> left, std::shared_ptr<const Formula> right);
 		virtual ~And();
 
 		bool fulfilled(const VersionNumber &sv, const VersionNumber &bv) const override;
+
+		std::string to_string() const override;
 	};
 
 
@@ -74,10 +90,14 @@ namespace PackageConstraints
 		const std::shared_ptr<const Formula> right;
 
 	public:
+		/* nullptr means neutral element, however on its own it's not a valid
+		 * formula */
 		Or(std::shared_ptr<const Formula> left, std::shared_ptr<const Formula> right);
 		virtual ~Or();
 
 		bool fulfilled(const VersionNumber &sv, const VersionNumber &bv) const override;
+
+		std::string to_string() const override;
 	};
 }
 

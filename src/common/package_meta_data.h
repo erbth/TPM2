@@ -19,6 +19,10 @@
 #define ALL_PKG_STATES					1000
 
 
+#define INSTALLATION_REASON_AUTO		1
+#define INSTALLATION_REASON_MANUAL		2
+
+
 /* This class represents a package in memory. It shall be returned by the
  * package providing module from repositories, depres shall use it and finally
  * the install module can find information about the package here. */
@@ -33,6 +37,7 @@ struct PackageMetaData
 	DependencyList pre_dependencies;
 	DependencyList dependencies;
 
+	char installation_reason;
 	int state;
 
 	// FileList files;
@@ -40,7 +45,8 @@ struct PackageMetaData
 
 	/* Methods */
 	PackageMetaData(const std::string &name, const int architecture,
-			const VersionNumber &version, const VersionNumber &source_version);
+			const VersionNumber &version, const VersionNumber &source_version,
+			char installation_reason, int state);
 
 
 	/* Just a convenience method with straight forward implementation */
