@@ -1,6 +1,7 @@
 #include "package_constraints.h"
 
 using namespace std;
+using namespace tinyxml2;
 
 
 namespace PackageConstraints
@@ -246,6 +247,51 @@ string PrimitivePredicate::to_string() const
 }
 
 
+void PrimitivePredicate::to_xml (XMLDocument *doc, XMLElement *root) const
+{
+	XMLNode *ln = root->FirstChildElement();
+
+	XMLElement *e = doc->NewElement (is_source ? "sconstr" : "constr");
+
+	if (ln)
+		root->InsertAfterChild (ln, e);
+	else
+		root->InsertFirstChild (e);
+
+	switch (type)
+	{
+		case TYPE_EQ:
+			e->SetAttribute ("type", "eq");
+			break;
+
+		case TYPE_NEQ:
+			e->SetAttribute ("type", "neq");
+			break;
+
+		case TYPE_GEQ:
+			e->SetAttribute ("type", "geq");
+			break;
+
+		case TYPE_LEQ:
+			e->SetAttribute ("type", "leq");
+			break;
+
+		case TYPE_GT:
+			e->SetAttribute ("type", "gt");
+			break;
+
+		case TYPE_LT:
+			e->SetAttribute ("type", "lt");
+			break;
+
+		default:
+			e->SetAttribute ("type", "?");
+	}
+
+	e->SetText (v.to_string().c_str());
+}
+
+
 And::And(shared_ptr<const Formula> left, shared_ptr<const Formula> right)
 	: left(left), right(right)
 {
@@ -267,6 +313,15 @@ string And::to_string() const
 	return "(&" +
 		(left ? left->to_string() : "()") +
 		(right ? right->to_string() : "()") + ")";
+}
+
+void And::to_xml(XMLDocument *doc, XMLElement *root) const
+{
+	if (left)
+		left->to_xml (doc, root);
+
+	if (right)
+		right->to_xml (doc, root);
 }
 
 
@@ -291,6 +346,24 @@ string Or::to_string() const
 	return "(|" +
 		(left ? left->to_string() : "()") +
 		(right ? right->to_string() : "()") + ")";
+}
+
+void Or::to_xml (XMLDocument *doc, XMLElement *root) const
+{
+	XMLNode *ln = root->FirstChildElement();
+
+	XMLElement *e = doc->NewElement ("or");
+
+	if (ln)
+		root->InsertAfterChild (ln, e);
+	else
+		root->InsertFirstChild (e);
+
+	if (left)
+		left->to_xml (doc, e);
+
+	if (right)
+		right->to_xml (doc, e);
 }
 
 }

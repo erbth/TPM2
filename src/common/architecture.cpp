@@ -1,3 +1,4 @@
+#include <cstring>
 #include "architecture.h"
 
 using namespace std;
@@ -20,10 +21,15 @@ const string Architecture::to_string(int a)
 
 int Architecture::from_string(const string &a)
 {
-	if (a == "amd64")
+	return from_string (a.c_str());
+}
+
+int Architecture::from_string (const char* a)
+{
+	if (strcmp (a, "amd64") == 0)
 		return amd64;
 
-	else if (a == "i386")
+	else if (strcmp (a, "i386") == 0)
 		return i386;
 
 	throw InvalidArchitecture(a);

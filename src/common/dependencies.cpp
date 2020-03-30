@@ -22,7 +22,7 @@ int Dependency::get_architecture() const
 
 bool Dependency::operator<(const Dependency& o) const
 {
-	return identifier < o.identifier && version_formula < o.version_formula;
+	return identifier < o.identifier;
 }
 
 

@@ -9,8 +9,9 @@ add_executable(tpm2
 	../common/dependencies.cpp
 	../common/package_meta_data.cpp
 	../common/architecture.cpp
-	../common/version_number.cpp)
+	../common/version_number.cpp
+	../common/common_utilities.cpp)
 
 
-target_include_directories(tpm2 PRIVATE ${SQLITE3_INCLUDE_DIRS})
-target_link_libraries(tpm2 ${SQLITE3_LIBRARIES} stdc++fs)
+target_include_directories(tpm2 PRIVATE ${SQLITE3_INCLUDE_DIRS} ${TINY_XML2_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
+target_link_libraries(tpm2 ${SQLITE3_LIBRARIES} ${TINY_XML2_LIBRARIES} ${ZLIB_LIBRARIES} stdc++fs)

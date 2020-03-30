@@ -7,12 +7,14 @@ set(TPM2_VERSION_MINOR 1)
 set(TPM2_VERSION_PATCH 0)
 
 set(CMAKE_CXX_FLAGS "-std=gnu++17 -Wall -gdwarf-2")
-set(CMAKE_CXX_FLAGS_Debug "-DDEBUG")
+set(CMAKE_CXX_FLAGS_Debug "-DDEBUG -O1")
 set(CMAKE_CXX_FLAGS_Release "-O3")
 
 # Find required packages
 find_package(PkgConfig)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
+pkg_check_modules(TINY_XML2 REQUIRED tinyxml2)
+pkg_check_modules(ZLIB REQUIRED zlib)
 
 if (WITH_TESTS)
 	find_package (Boost COMPONENTS unit_test_framework REQUIRED)

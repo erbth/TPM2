@@ -11,5 +11,6 @@ add_executable (test_package_constraints
 	../package_constraints.cpp
 	../version_number.cpp)
 
-target_link_libraries (test_package_constraints ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
+target_include_directories (test_package_constraints PRIVATE ${TINY_XML2_INCLUDE_DIRS})
+target_link_libraries (test_package_constraints ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} ${TINY_XML2_LIBRARIES})
 add_test (NAME test_package_constraints COMMAND test_package_constraints)

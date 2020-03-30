@@ -82,7 +82,7 @@ void print_help()
 }
 
 
-/* Commandline parser support library */
+/* Commandline parser support class */
 struct ParserState
 {
 	static const char NOT_SPECIFIED = 0;
@@ -97,6 +97,8 @@ struct ParserState
 int _main(int argc, char** argv)
 {
 	auto params = make_shared<Parameters>();
+
+	params->read_from_env();
 
 	/* Set the umask to a defined value such that directories and files are
 	 * created with right permissions. */

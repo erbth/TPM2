@@ -289,6 +289,7 @@ void PackageDB::ensure_schema()
 						"pkg_name varchar,"
 						"pkg_architecture integer,"
 						"pkg_version varchar,"
+						"type integer,"
 						"digest varchar not null,"
 						"primary key (path, pkg_name, pkg_architecture, pkg_version),"
 						"foreign key (pkg_name, pkg_architecture, pkg_version)"

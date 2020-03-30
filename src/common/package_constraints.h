@@ -9,6 +9,7 @@
 #include <exception>
 #include <memory>
 #include <string>
+#include <tinyxml2.h>
 #include "version_number.h"
 
 
@@ -36,6 +37,19 @@ namespace PackageConstraints
 		/* Converts a string to a formula. Returns nullptr if the string is
 		 * invalid. */
 		static std::shared_ptr<Formula> from_string(const std::string&);
+
+
+		/* Converts the formula to the alternative xml representation. The
+		 * string representation is shorter, but the this one is easier to read
+		 * and write for humans and foreign machines alike. However you have to
+		 * manually back-convert it. This function is just here to be not forced
+		 * to expose private members.
+		 *
+		 * @param doc The XMLDocument for which elements shall be created.
+		 * @param root The root of the node under which the individual
+		 *     components shall be inserted. That's better than returning a
+		 *     vector.*/
+		virtual void to_xml (tinyxml2::XMLDocument *doc, tinyxml2::XMLElement *root) const = 0;
 	};
 
 
@@ -62,6 +76,8 @@ namespace PackageConstraints
 		bool fulfilled(const VersionNumber &sv, const VersionNumber &bv) const override;
 
 		std::string to_string() const override;
+
+		void to_xml (tinyxml2::XMLDocument *doc, tinyxml2::XMLElement *root) const override;
 	};
 
 
@@ -80,6 +96,8 @@ namespace PackageConstraints
 		bool fulfilled(const VersionNumber &sv, const VersionNumber &bv) const override;
 
 		std::string to_string() const override;
+
+		void to_xml (tinyxml2::XMLDocument *doc, tinyxml2::XMLElement *root) const override;
 	};
 
 
@@ -98,6 +116,8 @@ namespace PackageConstraints
 		bool fulfilled(const VersionNumber &sv, const VersionNumber &bv) const override;
 
 		std::string to_string() const override;
+
+		void to_xml (tinyxml2::XMLDocument *doc, tinyxml2::XMLElement *root) const override;
 	};
 }
 

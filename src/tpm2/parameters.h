@@ -40,6 +40,11 @@ struct Parameters
 
 	/* Methods */
 	bool target_is_native() const;
+
+	/* Read the parameters from environment variables. This should be executed
+	 * before settings them manually from i.e. commandline arguments as the
+	 * latter can usually override the environment. */
+	void read_from_env();
 };
 
 #endif /* __PARAMETERS_H */

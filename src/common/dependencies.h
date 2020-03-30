@@ -25,7 +25,9 @@ struct Dependency
 	const std::string& get_name() const;
 	int get_architecture() const;
 
-	/* To easily use this with sets */
+	/* To easily use this with sets. Dependencies are considered equal if their
+	 * identifies match. For everything else it wouldn't make much sense to use
+	 * a set ... */
 	bool operator<(const Dependency&) const;
 };
 
