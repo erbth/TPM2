@@ -5,10 +5,13 @@
 #ifndef __PACK_H
 #define __PACK_H
 
+#include <filesystem>
 #include <string>
 #include "managed_buffer.h"
 
 bool pack (const std::string& dir);
+
+bool create_file_index (const std::filesystem::path& dir, DynamicBuffer<uint8_t>& dst, size_t& size);
 
 /* Be aware that this calls exec and does not close open fds. Make sure to
  * set the CLOEXEC flag on them! */

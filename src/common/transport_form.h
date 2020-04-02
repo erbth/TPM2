@@ -34,10 +34,11 @@ namespace TransportForm
 
 
 	const uint8_t SEC_TYPE_DESC = 0x00;
-	const uint8_t SEC_TYPE_PREINST = 0x01;
-	const uint8_t SEC_TYPE_CONFIGURE = 0x02;
-	const uint8_t SEC_TYPE_UNCONFIGURE = 0x03;
-	const uint8_t SEC_TYPE_POSTRM = 0x04;
+	const uint8_t SEC_TYPE_FILE_INDEX = 0x01;
+	const uint8_t SEC_TYPE_PREINST = 0x20;
+	const uint8_t SEC_TYPE_CONFIGURE = 0x21;
+	const uint8_t SEC_TYPE_UNCONFIGURE = 0x22;
+	const uint8_t SEC_TYPE_POSTRM = 0x23;
 	const uint8_t SEC_TYPE_ARCHIVE = 0x80;
 	const uint8_t SEC_TYPE_SIG_OPENPGP = 0xf0;
 
@@ -64,6 +65,22 @@ namespace TransportForm
 	};
 
 
+	struct FileRecord
+	{
+		/* Stored attributes */
+		uint8_t type;
+		uint32_t uid, gid;
+		uint16_t mode;
+		uint32_t size;
+		uint8_t sha1_sum[20];
+		std::string path;
+
+		/* Serialization */
+		size_t binary_size () const;
+		void to_binary (uint8_t *buf) const;
+	};
+
+
 	class TransportForm
 	{
 	private:
@@ -74,6 +91,9 @@ namespace TransportForm
 
 		const char *desc = nullptr;
 		size_t desc_size = 0;
+
+		const char *file_index = nullptr;
+		size_t file_index_size = 0;
 
 		const char *preinst = nullptr;
 		size_t preinst_size = 0;
@@ -93,6 +113,7 @@ namespace TransportForm
 
 	public:
 		void set_desc (const char *desc, size_t size);
+		void set_file_index (const char *file_index, size_t size);
 
 		void set_preinst (const char *preinst, size_t size);
 		void set_configure (const char *configure, size_t size);

@@ -31,6 +31,16 @@
 #define INSTALLATION_REASON_MANUAL		2
 
 
+/* Different file types */
+#define FILE_TYPE_REGULAR				0
+#define FILE_TYPE_DIRECTORY				1
+#define FILE_TYPE_LINK					2
+#define FILE_TYPE_CHAR					3
+#define FILE_TYPE_BLOCK					4
+#define FILE_TYPE_SOCKET				5
+#define FILE_TYPE_PIPE					6
+
+
 /* This class represents a package in memory. It shall be returned by the
  * package providing module from repositories, depres shall use it and finally
  * the install module can find information about the package here. */

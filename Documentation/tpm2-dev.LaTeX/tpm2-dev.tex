@@ -160,7 +160,7 @@
 			0x03 & Character device \\
 			0x04 & Block device \\
 			0x05 & Socket \\
-			0x06 & FIFO \\
+			0x06 & Pipe \\
 		\end{tabular}
 	
 		\caption{The database schema of \module{PackageDB}}
@@ -382,11 +382,11 @@
 		Identifier & Required & Description \\
 		\hline
 		0x00 & yes & meta data (like former \file{desc.xml}) \\
-		0x20 & no & file index \\
-		0x01 & no & \script{preinst} script \\
-		0x02 & no & \script{configure} script \\
-		0x03 & no & \script{unconfigure} script \\
-		0x04 & no & \script{postrm} script \\
+		0x01 & no & file index \\
+		0x20 & no & \script{preinst} script \\
+		0x21 & no & \script{configure} script \\
+		0x22 & no & \script{unconfigure} script \\
+		0x23 & no & \script{postrm} script \\
 		0x80 & no & The file archive \\
 		0xf0 & no & A OpenPGP signature \\
 	\end{tabularx}
@@ -417,11 +417,11 @@
 					\hline
 					0x09 & mode: u16 \\
 					\hline
-					0x0b & size: u64 \\
+					0x0b & size: u32 \\
 					\hline
-					0x13 & sha1 sum: 20 bytes \\
+					0x0f & sha1 sum: 20 bytes \\
 					\hline
-					0x27 & zero-terminated absolute path \\
+					0x23 & zero-terminated absolute path \\
 					\hline
 				\end{tabular}
 			\end{minipage}
@@ -429,7 +429,7 @@
 		
 		\vspace{1eM}
 		
-		Multibyte integers shall be encoded little endian, again. The type may be on out of those defined in table \ref{tab:the_database_schema_of_packagedb}. If the file is a symbolic link, size shall be the length of its target's name and digest the sha1 sum of the name. If the file is not a regular file nor a link, the sha1 sum and the size shall be set to zero.
+		Multibyte integers shall be encoded little endian, again. The type may be on out of those defined in table \ref{tab:the_database_schema_of_packagedb}. If the file is a symbolic link, size shall be the length of its target's name and digest the sha1 sum of the name. If the file is neither a regular file nor a link, the sha1 sum and the size shall be set to zero.
 		
 		\vspace{1eM}
 		

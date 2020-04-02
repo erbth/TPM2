@@ -3,10 +3,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
-#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <optional>
+#include <stack>
 #include <tinyxml2.h>
 #include <utility>
 #include "pack.h"
@@ -18,7 +18,9 @@
 extern "C" {
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <dirent.h>
 }
 
 using namespace std;
@@ -301,19 +303,28 @@ bool pack (const string& _dir)
 	}
 
 
-	/* Archive the package's content and write it to the transport form file */
+	/* Index and archive the files that will be part of the package */
 	fs::path destdir_path = dir / "destdir";
 
-	size_t archive_size = 0;
+	DynamicBuffer<uint8_t> file_index;
+	size_t file_index_size = 0;
+
 	DynamicBuffer<uint8_t> archive;
+	size_t archive_size = 0;
 
 	if (fs::is_directory (destdir_path))
 	{
-		if (!create_tar_archive (dir, archive, archive_size))
+		if (!create_file_index (destdir_path, file_index, file_index_size))
 			return false;
 
-		if (archive_size > 0)
+		if (!create_tar_archive (destdir_path, archive, archive_size))
+			return false;
+
+		if (archive_size > 0 && file_index_size > 0)
+		{
+			tf.set_file_index ((const char*) file_index.buf, file_index_size);
 			tf.set_archive (archive.buf, archive_size);
+		}
 	}
 
 
@@ -340,6 +351,179 @@ bool pack (const string& _dir)
 
 
 	/* Optionally sign the file */
+
+	return true;
+}
+
+
+bool create_file_index (const fs::path& dir, DynamicBuffer<uint8_t>& dst, size_t& size)
+{
+	struct path_component
+	{
+		fs::path location;
+		fs::path virtual_path;
+		DIR *dir;
+	};
+
+	bool success = true;
+	stack<path_component> dirs;
+
+	size = 0;
+
+	/* Start with the root */
+	{
+		DIR *first_dir = opendir (dir.c_str());
+		if (!first_dir)
+		{
+			fprintf (stderr, "Failed to index destdir: %s\n", strerror (errno));
+			success = false;
+		}
+
+		dirs.push ({dir, "/", first_dir});
+	}
+
+	/* Traverse in DFS pre-order manner */
+	while (success && dirs.size() > 0)
+	{
+		errno = 0;
+
+		struct dirent *dent = readdir (dirs.top().dir);
+
+		if (!dent && errno == 0)
+		{
+			/* Go up */
+			closedir (dirs.top().dir);
+			dirs.pop();
+		}
+		else if (!dent)
+		{
+			/* Error */
+			fprintf (stderr, "Failed to open directory %s: %s\n",
+					dirs.top().location.c_str(), strerror (errno));
+
+			success = false;
+		}
+		else
+		{
+			/* Filter */
+			if (strcmp (dent->d_name, ".") == 0 ||
+					strcmp (dent->d_name, "..") == 0)
+			{
+				continue;
+			}
+
+			/* Index a file */
+			fs::path elem_location = dirs.top().location / dent->d_name;
+			fs::path elem_virtual_path = dirs.top().virtual_path / dent->d_name;
+
+			struct stat statbuf;
+			if (lstat (elem_location.c_str(), &statbuf) < 0)
+			{
+				fprintf (stderr, "Failed to stat %s: %s\n",
+						elem_location.c_str(), strerror (errno));
+
+				success = false;
+				break;
+			}
+
+			if (S_ISDIR(statbuf.st_mode))
+			{
+				/* Index a directory: in order traversal + move down into it. */
+				tf::FileRecord rec;
+
+				rec.type = FILE_TYPE_DIRECTORY;
+				rec.uid = statbuf.st_uid;
+				rec.gid = statbuf.st_gid;
+				rec.mode = statbuf.st_mode & 07777;
+				rec.size = 0;
+				memset (rec.sha1_sum, 0, sizeof (rec.sha1_sum));
+				rec.path = elem_virtual_path;
+
+				dst.ensure_size (size + rec.binary_size());
+				rec.to_binary (dst.buf + size);
+
+				size += rec.binary_size();
+
+				DIR *child = opendir (elem_location.c_str());
+				if (!child)
+				{
+					fprintf (stderr, "Failed to open directory %s: %s\n",
+							elem_location.c_str(), strerror (errno));
+
+					success = false;
+				}
+				else
+				{
+					dirs.push ({elem_location, elem_virtual_path, child});
+				}
+			}
+			else
+			{
+				tf::FileRecord rec;
+
+				switch (statbuf.st_mode & S_IFMT)
+				{
+					case S_IFSOCK:
+						rec.type = FILE_TYPE_SOCKET;
+						break;
+
+					case S_IFLNK:
+						rec.type = FILE_TYPE_LINK;
+						break;
+
+					case S_IFREG:
+						rec.type = FILE_TYPE_REGULAR;
+						break;
+
+					case S_IFBLK:
+						rec.type = FILE_TYPE_BLOCK;
+						break;
+
+					case S_IFCHR:
+						rec.type = FILE_TYPE_CHAR;
+						break;
+
+					case S_IFIFO:
+						rec.type = FILE_TYPE_PIPE;
+						break;
+
+					default:
+						fprintf (stderr, "File %s has unknown type.\n",
+								elem_location.c_str());
+
+						success = false;
+						break;
+				}
+
+
+				if (success)
+				{
+					rec.uid = statbuf.st_uid;
+					rec.gid = statbuf.st_gid;
+					rec.mode = statbuf.st_mode & 07777;
+					rec.size = 0;
+					memset (rec.sha1_sum, 0, sizeof (rec.sha1_sum));
+					rec.path = elem_virtual_path;
+
+					dst.ensure_size (size + rec.binary_size());
+					rec.to_binary (dst.buf + size);
+
+					size += rec.binary_size();
+					/* Index something else. */
+				}
+			}
+		}
+	}
+
+	/* Clean up */
+	while (dirs.size() > 0)
+	{
+		closedir (dirs.top().dir);
+		dirs.pop();
+	}
+
+	if (!success)
+		return false;
 
 	return true;
 }
@@ -386,7 +570,7 @@ bool create_tar_archive (const std::string& dir, DynamicBuffer<uint8_t>& dst, si
 	for (;;)
 	{
 		dst.ensure_size (size + 20480);
-		ssize_t r = read (pread, dst.buf, 20480);
+		ssize_t r = read (pread, dst.buf + size, 20480);
 
 		if (r < 0)
 		{

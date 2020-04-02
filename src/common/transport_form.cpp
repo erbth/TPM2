@@ -1,5 +1,6 @@
-#include <system_error>
 #include <cerrno>
+#include <cstring>
+#include <system_error>
 #include "transport_form.h"
 #include "architecture.h"
 #include "managed_buffer.h"
@@ -72,11 +73,36 @@ void TableOfContents::to_binary (char *buf) const
 }
 
 
+size_t FileRecord::binary_size() const
+{
+	return 1 + 4 + 4 + 2 + 4 + 20 + path.size() + 1;
+}
+
+
+void FileRecord::to_binary (uint8_t *buf) const
+{
+	*buf = type;
+	*((uint32_t*) (buf + 0x01)) = htole32 (uid);
+	*((uint32_t*) (buf + 0x05)) = htole32 (gid);
+	*((uint16_t*) (buf + 0x09)) = htole16 (mode);
+	*((uint32_t*) (buf + 0x0b)) = htole32 (size);
+	strncpy ((char*) buf + 0x0f, (char*) sha1_sum, 20);
+	strcpy ((char*) buf + 0x23, path.c_str());
+	*(buf + 0x23 + path.size()) = 0;
+}
+
+
 /* A class that represents a transport form */
 void TransportForm::set_desc (const char *desc, size_t size)
 {
 	this->desc = desc;
 	this->desc_size = size;
+}
+
+void TransportForm::set_file_index (const char *file_index, size_t size)
+{
+	this->file_index = file_index;
+	file_index_size = size;
 }
 
 void TransportForm::set_preinst (const char *preinst, size_t size)
@@ -126,6 +152,11 @@ TableOfContents TransportForm::get_toc() const
 	t.sections.push_back (TOCSection (SEC_TYPE_DESC, 0, desc_size));
 
 
+	/* Add file index */
+	if (file_index)
+		t.sections.push_back (TOCSection (SEC_TYPE_FILE_INDEX, 0, file_index_size));
+
+
 	/* Add maintainer scripts if present */
 	if (preinst)
 		t.sections.push_back (TOCSection (SEC_TYPE_PREINST, 0, preinst_size));
@@ -163,6 +194,9 @@ int TransportForm::write (Writer& w)
 	if (!desc)
 		return -ENOMEM;
 
+	if ((file_index == nullptr) != (archive == nullptr))
+		return -ENOMEM;
+
 	/* Write toc */
 	{
 		TableOfContents toc = get_toc();
@@ -180,6 +214,14 @@ int TransportForm::write (Writer& w)
 	auto r = w.write (desc, desc_size);
 	if (r != 0)
 		return r;
+
+	/* Write file index if there */
+	if (file_index)
+	{
+		r = w.write (file_index, file_index_size);
+		if (r != 0)
+			return r;
+	}
 
 	/* Write maintainer scripts if present */
 	if (preinst)
