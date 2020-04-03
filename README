@@ -1,0 +1,9 @@
+Version 2 of the TSClient LEGACY Package Manager (TPM)
+
+Version two of the package manager for the TSClient LEGACY ThinClient operating
+system is entirely written in C++. It uses GNU Tar, zlib, TinyXML2 and SQLite as
+package database. It is designated to be more extendible and faster than version
+1, which was entirey written in OCaml. This must be the last package manager,
+there won't be enough time for another one.
+
+3 April, 2020, Thomas Erbesdobler <t.erbesdobler@gmx.de>
