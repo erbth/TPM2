@@ -14,6 +14,7 @@
 #include "package_meta_data.h"
 #include "file_wrapper.h"
 #include "transport_form.h"
+#include "message_digest.h"
 
 extern "C" {
 #include <sys/types.h>
@@ -27,6 +28,7 @@ using namespace std;
 using namespace tinyxml2;
 namespace fs = std::filesystem;
 namespace tf = TransportForm;
+namespace md = message_digest;
 
 
 bool pack (const string& _dir)
@@ -118,6 +120,24 @@ bool pack (const string& _dir)
 			mdata->name.c_str(), Architecture::to_string(mdata->architecture).c_str(),
 			mdata->version.to_string().c_str(), mdata->source_version.to_string().c_str());
 
+	printf ("    Pre-dependencies:\n");
+	for (auto& d : mdata->pre_dependencies)
+	{
+		printf ("      %s@%s\n",
+				d.get_name().c_str(),
+				Architecture::to_string(d.get_architecture()).c_str());
+	}
+
+	printf ("\n    Dependencies:\n");
+	for (auto& d : mdata->dependencies)
+	{
+		printf ("      %s@%s\n",
+				d.get_name().c_str(),
+				Architecture::to_string(d.get_architecture()).c_str());
+	}
+
+	printf ("\n");
+
 
 	/* Serialize XML DOM */
 	tf::TransportForm tf;
@@ -176,6 +196,7 @@ bool pack (const string& _dir)
 			return false;
 		}
 
+		printf ("    Have preinst\n");
 		tf.set_preinst (preinst->buf, s);
 	}
 
@@ -217,6 +238,7 @@ bool pack (const string& _dir)
 			return false;
 		}
 
+		printf ("    Have configure\n");
 		tf.set_configure (configure->buf, s);
 	}
 
@@ -258,6 +280,7 @@ bool pack (const string& _dir)
 			return false;
 		}
 
+		printf ("    Have unconfigure\n");
 		tf.set_unconfigure (unconfigure->buf, s);
 	}
 
@@ -299,6 +322,7 @@ bool pack (const string& _dir)
 			return false;
 		}
 
+		printf ("    Have postrm\n");
 		tf.set_postrm (postrm->buf, s);
 	}
 
@@ -322,6 +346,8 @@ bool pack (const string& _dir)
 
 		if (archive_size > 0 && file_index_size > 0)
 		{
+			printf ("    Have archive\n");
+
 			tf.set_file_index ((const char*) file_index.buf, file_index_size);
 			tf.set_archive (archive.buf, archive_size);
 		}
@@ -465,26 +491,69 @@ bool create_file_index (const fs::path& dir, DynamicBuffer<uint8_t>& dst, size_t
 				{
 					case S_IFSOCK:
 						rec.type = FILE_TYPE_SOCKET;
+						rec.size = 0;
+						memset (rec.sha1_sum, 0, sizeof (rec.sha1_sum));
 						break;
 
 					case S_IFLNK:
+					{
 						rec.type = FILE_TYPE_LINK;
+
+						string dst;
+
+						try {
+							dst = convenient_readlink (elem_location);
+						} catch (exception& e) {
+							fprintf (stderr, "Cannot read link %s: %s\n",
+									elem_location.c_str(), e.what());
+
+							success = false;
+						}
+
+						if (success)
+						{
+							rec.size = dst.size();
+							md::sha1_memory (dst.c_str(), dst.size(), (char*) rec.sha1_sum);
+						}
+
 						break;
+					}
 
 					case S_IFREG:
+					{
 						rec.type = FILE_TYPE_REGULAR;
+
+						int ret = md::sha1_file (elem_location.c_str(), (char*) rec.sha1_sum);
+						if (ret < 0)
+						{
+							fprintf (stderr, "Cannot SHA1-hash file %s: %s\n",
+									elem_location.c_str(), strerror (-ret));
+
+							success = false;
+						}
+
+						if (success)
+							rec.size = statbuf.st_size;
+
 						break;
+					}
 
 					case S_IFBLK:
 						rec.type = FILE_TYPE_BLOCK;
+						rec.size = 0;
+						memset (rec.sha1_sum, 0, sizeof (rec.sha1_sum));
 						break;
 
 					case S_IFCHR:
 						rec.type = FILE_TYPE_CHAR;
+						rec.size = 0;
+						memset (rec.sha1_sum, 0, sizeof (rec.sha1_sum));
 						break;
 
 					case S_IFIFO:
 						rec.type = FILE_TYPE_PIPE;
+						rec.size = 0;
+						memset (rec.sha1_sum, 0, sizeof (rec.sha1_sum));
 						break;
 
 					default:
@@ -501,8 +570,6 @@ bool create_file_index (const fs::path& dir, DynamicBuffer<uint8_t>& dst, size_t
 					rec.uid = statbuf.st_uid;
 					rec.gid = statbuf.st_gid;
 					rec.mode = statbuf.st_mode & 07777;
-					rec.size = 0;
-					memset (rec.sha1_sum, 0, sizeof (rec.sha1_sum));
 					rec.path = elem_virtual_path;
 
 					dst.ensure_size (size + rec.binary_size());

@@ -5,6 +5,10 @@
 #include <filesystem>
 #include "common_utilities.h"
 
+extern "C" {
+#include <unistd.h>
+}
+
 using namespace std;
 namespace fs = std::filesystem;
 
@@ -48,5 +52,49 @@ string get_absolute_path (const string& path)
 
 	free (buf);
 
+	return s;
+}
+
+
+string convenient_readlink (const std::string& path)
+{
+	return convenient_readlink (path.c_str());
+}
+
+
+string convenient_readlink (const char *path)
+{
+	char *buf = nullptr;
+	ssize_t buf_size = 1024;
+	ssize_t ret;
+
+	for (;;)
+	{
+		buf = (char*) malloc (buf_size);
+		if (!buf)
+			throw system_error (error_code (errno, generic_category()));
+
+		ret = readlink (path, buf, buf_size);
+		if (ret < 0)
+		{
+			free (buf);
+			throw system_error (error_code (errno, generic_category()));
+		}
+
+		if (ret < buf_size)
+			break;
+
+		/* Do another round. */
+		free (buf);
+		buf = nullptr;
+
+		buf_size *= 2;
+
+		if (buf_size >= 10000000)
+			throw system_error (error_code (ENOENT, generic_category()));
+	}
+
+	string s(buf, ret);
+	free (buf);
 	return s;
 }

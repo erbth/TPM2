@@ -17,4 +17,7 @@
  * @throws std::system_error if the path cannot be resolved. */
 std::string get_absolute_path(const std::string& path);
 
+std::string convenient_readlink (const std::string& path);
+std::string convenient_readlink (const char *path);
+
 #endif /* __COMMON_UTILITIES_H */

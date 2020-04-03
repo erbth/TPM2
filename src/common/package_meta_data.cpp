@@ -49,7 +49,7 @@ unique_ptr<XMLDocument> PackageMetaData::to_xml() const
 
 	XMLNode *ln = root->InsertFirstChild (e);
 
-	e = doc->NewElement ("architecture");
+	e = doc->NewElement ("arch");
 	e->SetText (Architecture::to_string (architecture).c_str());
 	ln = root->InsertAfterChild (ln, e);
 
@@ -320,7 +320,7 @@ shared_ptr<PackageMetaData> read_package_meta_data_from_xml (
 										to_string(cde->GetLineNum()));
 							}
 						}
-						else if (strcmp (n3, "architecture") == 0)
+						else if (strcmp (n3, "arch") == 0)
 						{
 							if (dep_arch == Architecture::invalid)
 							{
@@ -482,7 +482,7 @@ shared_ptr<PackageMetaData> read_package_meta_data_from_xml (
 
 
 		/* See if you can construct the metadata object already. */
-		if (name && architecture != Architecture::invalid && version && source_version)
+		if (!mdata && name && architecture != Architecture::invalid && version && source_version)
 		{
 			mdata = make_shared<PackageMetaData> (string(name), architecture,
 					version.value(), source_version.value(),
