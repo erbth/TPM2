@@ -5,4 +5,6 @@
 #define TPM2_VERSION_MINOR @TPM2_VERSION_MINOR@
 #define TPM2_VERSION_PATCH @TPM2_VERSION_PATCH@
 
+#define TPM2_CONFIG_FILE "/etc/tpm/config.xml"
+
 #endif /* __TPM2_CONFIG_H */

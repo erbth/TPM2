@@ -35,6 +35,19 @@ void print_help()
 	print_version();
 
 	printf(
+"\n"
+"This is version two, which is entirely written in C++. It uses GNU Tar, zlib,\n"
+"TinyXML2 and SQLite3 as package database.\n\n"
+
+"Specifying packages: Each package description may look like name@arch>=s:version.\n"
+"Each description is one parameter. The 's:' is optional and indicates source\n"
+"package version in contrast to binary package version. @arch and >=version are\n"
+"optional, one of them may be given alone, or both. Or none. arch can be amd64,\n"
+"i386 or any other supported architecture. Instead of >= one may use <=, >, <,\n"
+"!=, = or == where the latter two mean the same. Version number is a version\n"
+"number in the format like verywhere else withing TSLegacy.\n\n"
+
+"Parameters:\n"
 "  --version               Print the program's version\n\n"
 
 "  --target                Root of the managed system's filesystem\n\n"
@@ -77,6 +90,8 @@ void print_help()
 "  --mark-auto             Mark the specified packages as automatically installed\n\n"
 
 "  --help                  Display this list of options\n\n"
+
+"At least one operation must be specified.\n"
 );
 
 }
@@ -243,6 +258,10 @@ int _main(int argc, char** argv)
 		printf ("Error: no operation specified\n");
 		return 2;
 	}
+
+	/* Read the config file */
+	if (!read_config_file (params))
+		return 1;
 
 	/* Perform the specified operation. */
 	switch(params->operation)

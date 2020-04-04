@@ -98,3 +98,14 @@ string convenient_readlink (const char *path)
 	free (buf);
 	return s;
 }
+
+
+gp_exception::gp_exception (const string& msg)
+	: msg(msg)
+{
+}
+
+const char *gp_exception::what() const noexcept
+{
+	return msg.c_str();
+}

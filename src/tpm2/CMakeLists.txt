@@ -5,12 +5,15 @@ add_executable(tpm2
 	utility.cpp
 	depres.cpp
 	package_db.cpp
+	package_provider.cpp
+	directory_repository.cpp
 	../common/package_constraints.cpp
 	../common/dependencies.cpp
 	../common/package_meta_data.cpp
 	../common/architecture.cpp
 	../common/version_number.cpp
-	../common/common_utilities.cpp)
+	../common/common_utilities.cpp
+	../common/transport_form.cpp)
 
 
 target_include_directories(tpm2 PRIVATE ${SQLITE3_INCLUDE_DIRS} ${TINY_XML2_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})

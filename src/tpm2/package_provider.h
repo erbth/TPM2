@@ -13,15 +13,37 @@
 #include "parameters.h"
 #include "version_number.h"
 #include "package_meta_data.h"
-#include "Repository.h"
+#include "repository.h"
+#include "transport_form.h"
+#include "managed_buffer.h"
 
 
-struct ProvidedPackage
+class ProvidedPackage
 {
+private:
 	std::shared_ptr<PackageMetaData> md;
 
+	/* Referring to the original transport form */
+	TransportForm::TableOfContents toc;
+	std::shared_ptr<TransportForm::ReadStream> rs;
+
+	std::shared_ptr<ManagedBuffer<char>> configure;
+
+	void ensure_read_stream();
+
+public:
 	/* A constructor */
-	ProvidedPackage(std::shared_ptr<PackageMetaData> md);
+	ProvidedPackage(
+			std::shared_ptr<PackageMetaData> md,
+			const TransportForm::TableOfContents& toc,
+			std::shared_ptr<TransportForm::ReadStream> rs);
+
+	std::shared_ptr<ManagedBuffer<char>> get_configure();
+
+	void clear_buffers();
+
+	/* Keep care: This calls exec and does NOT close fds before! */
+	void unpack_archive_to_directory(const std::string& dst);
 };
 
 
@@ -29,7 +51,7 @@ class PackageProvider
 {
 private:
 	std::shared_ptr<Parameters> params;
-	std::vector<Repository> repositories;
+	std::vector<std::shared_ptr<Repository>> repositories;
 
 public:
 	PackageProvider (std::shared_ptr<Parameters> params);

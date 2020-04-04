@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include "tpm2_config.h"
+#include "architecture.h"
 
 enum operation_type {
 	OPERATION_INVALID,
@@ -28,10 +29,34 @@ enum operation_type {
 	OPERATION_MARK_AUTO
 };
 
+
+struct RepositorySpecification
+{
+	/* Good for parsing etc. */
+	static const char TYPE_INVALID = -1;
+	static const char TYPE_DIR = 0;
+
+	const char type;
+
+	/* Depend on type:
+	 * Dir:
+	 *   param1:   location
+	 */
+	const std::string param1;
+
+	RepositorySpecification (char type, const std::string& param1);
+
+	bool operator==(const RepositorySpecification& o) const;
+};
+
+
 /* Most parameters are public to allow for easier access. */
 struct Parameters
 {
 	std::string target = "/";
+
+	int default_architecture = Architecture::invalid;
+	std::vector<RepositorySpecification> repos;
 
 	/* The operation to perform along with the packages on which it shall be
 	 * performed. */
@@ -46,5 +71,8 @@ struct Parameters
 	 * latter can usually override the environment. */
 	void read_from_env();
 };
+
+
+bool read_config_file (std::shared_ptr<Parameters> params);
 
 #endif /* __PARAMETERS_H */

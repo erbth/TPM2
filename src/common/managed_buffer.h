@@ -15,8 +15,10 @@ class ManagedBuffer
 {
 public:
 	T* buf;
+	const size_t size;
 
 	ManagedBuffer (size_t size)
+		: size(size)
 	{
 		buf = new T[size];
 	}

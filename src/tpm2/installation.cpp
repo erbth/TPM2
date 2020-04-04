@@ -4,12 +4,103 @@
 
 #include <cstdio>
 #include <map>
+#include <regex>
+#include <optional>
 #include "installation.h"
 #include "utility.h"
 #include "depres.h"
 #include "package_db.h"
 
 using namespace std;
+namespace pc = PackageConstraints;
+
+
+struct parse_cmd_param_result
+{
+	bool success;
+	const string& pkg;
+	string err;
+
+	string name;
+	int arch;
+	shared_ptr<pc::Formula> vc;
+
+	parse_cmd_param_result (const string& pkg)
+		: pkg(pkg)
+	{}
+};
+
+parse_cmd_param_result parse_cmd_param (const Parameters& params, const std::string& pkg)
+{
+	parse_cmd_param_result res (pkg);
+	res.success = true;
+	res.arch = params.default_architecture;
+
+	/* May be of the form name@arch>=version */
+	const regex pattern1(
+			"([^<>!=@]+)[ \t]*(@(amd64|i386))?[ \t]*((>=|<=|>|<|=|==|!=)(s:)?([^<>!=@]+))?");
+
+	smatch m1;
+	if (regex_match (pkg, m1, pattern1))
+	{
+		res.name = m1[1].str();
+		
+		if (m1[4].matched)
+		{
+			auto op = m1[5];
+
+			char type;
+
+			if (op == ">=")
+			{
+				type = pc::PrimitivePredicate::TYPE_GEQ;
+			}
+			else if (op == "<=")
+			{
+				type = pc::PrimitivePredicate::TYPE_LEQ;
+			}
+			else if (op == ">")
+			{
+				type = pc::PrimitivePredicate::TYPE_GT;
+			}
+			else if (op == "<")
+			{
+				type = pc::PrimitivePredicate::TYPE_LT;
+			}
+			else if (op == "=" || op == "==")
+			{
+				type = pc::PrimitivePredicate::TYPE_EQ;
+			}
+			else
+			{
+				type = pc::PrimitivePredicate::TYPE_NEQ;
+			}
+
+			try
+			{
+				res.vc = make_shared<pc::PrimitivePredicate>(
+						m1[6].matched, type, VersionNumber(m1[7].str()));
+			}
+			catch (InvalidVersionNumberString& e)
+			{
+				res.err = e.what();
+				res.success = false;
+				return res;
+			}
+		}
+
+		if (m1[2].matched)
+		{
+			res.arch = Architecture::from_string (m1[3].str());
+		}
+
+		return res;
+	}
+
+	res.success = false;
+	res.err = "Unknown format";
+	return res;
+}
 
 
 bool print_installation_graph(shared_ptr<Parameters> params)
@@ -25,6 +116,25 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 	/* Build the installation graph */
 	vector<pair<pair<const string, int>, shared_ptr<const PackageConstraints::Formula>>> new_packages;
 
+	for (const auto& pkg : params->operation_packages)
+	{
+		auto res = parse_cmd_param (*params, pkg);
+		if (!res.success)
+		{
+			fprintf (stderr, "Unknown package description: %s (%s)\n",
+					res.pkg.c_str(), res.err.c_str());
+			return false;
+		}
+
+		fprintf (stderr, "Additional package: %s @%s %s\n",
+				res.name.c_str(),
+				Architecture::to_string (res.arch).c_str(),
+				res.vc ? res.vc->to_string().c_str() : " all versions");
+
+		new_packages.emplace_back (make_pair(
+					make_pair(res.name, res.arch), res.vc));
+	}
+
 	depres::ComputeInstallationGraphResult r =
 		depres::compute_installation_graph(installed_packages, new_packages);
 
@@ -33,17 +143,15 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 		case CIG_SUCCESS:
 			break;
 
-
 		case CIG_INVALID_CURRENT_CONFIG:
-			printf ("Error: Failed to build the installation graph.\n");
-			printf ("Invalid current package configuration: %s\n",
+			fprintf (stderr, "Error: Failed to build the installation graph.\n");
+			fprintf (stderr, "Invalid current package configuration: %s\n",
 					r.error_message.c_str());
 
 			return false;
 
-
 		default:
-			printf ("Error: Failed to build the installation graph.\n");
+			fprintf (stderr, "Error: Failed to build the installation graph.\n");
 			return false;
 	}
 

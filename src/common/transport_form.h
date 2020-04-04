@@ -5,6 +5,7 @@
 #ifndef __TRANSPORT_FORM_H
 #define __TRANSPORT_FORM_H
 
+#include <exception>
 #include <optional>
 #include <string>
 #include <vector>
@@ -33,6 +34,31 @@ namespace TransportForm
 	};
 
 
+	class ReadStream
+	{
+	private:
+		gzFile f;
+
+	public:
+		const std::string filename;
+
+		/* @raises std::system_error if it cannot open the file. */
+		ReadStream (const std::string& filename);
+		~ReadStream();
+
+		/* If not all data could be read, the function raises an exception.
+		 * @raises std::system_error */
+		void read (char *buf, unsigned cnt);
+
+		/* @raises std::system_error */
+		unsigned tell ();
+
+		/* Absolute seek. "[C]an be extremely slow" (zlib manual) ...
+		 * @raises std::system_error */
+		void seek (unsigned pos);
+	};
+
+
 	const uint8_t SEC_TYPE_DESC = 0x00;
 	const uint8_t SEC_TYPE_FILE_INDEX = 0x01;
 	const uint8_t SEC_TYPE_PREINST = 0x20;
@@ -52,6 +78,9 @@ namespace TransportForm
 
 		static const unsigned binary_size = 9;
 		void to_binary(char *buf) const;
+
+		/* @raises InvalidToc and what rs raises */
+		static TOCSection read_from_binary (ReadStream& rs);
 	};
 
 	struct TableOfContents
@@ -62,6 +91,9 @@ namespace TransportForm
 
 		unsigned binary_size() const;
 		void to_binary(char *buf) const;
+
+		/* @raises InvalidToc and what rs raises. */
+		static TableOfContents read_from_binary (ReadStream& rs);
 	};
 
 
@@ -130,7 +162,32 @@ namespace TransportForm
 	};
 
 
+	/* A lightweight version of the transport form that serves as an interface
+	 * between the transport form module, which reads the packed file, and the
+	 * package provider. */
+	struct ReadTransportForm
+	{
+		TableOfContents toc;
+		std::shared_ptr<PackageMetaData> mdata;
+	};
+
+	/* @raises what rs raises and InvalidTocVersion,
+	 *     invalid_package_meta_data_xml. */
+	ReadTransportForm read_transport_form (ReadStream& rs);
+
+
 	std::string filename_from_mdata (const PackageMetaData& mdata);
+
+
+	class InvalidToc : public std::exception
+	{
+	private:
+		std::string msg;
+
+	public:
+		InvalidToc (const std::string& file, const std::string& msg);
+		const char *what() const noexcept override;
+	};
 };
 
 #endif /* __TRANSPORT_FORM_H */

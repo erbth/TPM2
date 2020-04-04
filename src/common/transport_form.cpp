@@ -43,6 +43,52 @@ int Writer::write (const char *buf, int size)
 }
 
 
+/* To read files */
+ReadStream::ReadStream (const string& filename)
+	: filename(filename)
+{
+	f = gzopen (filename.c_str(), "re");
+
+	if (!f)
+		throw system_error (error_code (errno, generic_category()));
+}
+
+
+ReadStream::~ReadStream ()
+{
+	gzclose (f);
+}
+
+
+void ReadStream::read (char *buf, unsigned cnt)
+{
+	int ret = gzread (f, buf, cnt);
+
+	if (ret < 0)
+		throw system_error (error_code (errno, generic_category()));
+
+	if (ret != (int) cnt)
+		throw system_error (error_code (ENODATA, generic_category()));
+}
+
+
+unsigned ReadStream::tell ()
+{
+	int ret = gztell (f);
+	if (ret < 0)
+		throw system_error (error_code (EIO, generic_category()));
+
+	return ret;
+}
+
+
+void ReadStream::seek (unsigned pos)
+{
+	if (gzseek (f, pos, SEEK_SET) < 0)
+		throw system_error (error_code (EIO, generic_category()));
+}
+
+
 TOCSection::TOCSection (uint8_t type, uint32_t start, uint32_t size)
 	: type(type), start(start), size(size)
 {
@@ -54,6 +100,35 @@ void TOCSection::to_binary (char *buf) const
 	buf[0] = (uint8_t) type;
 	*((uint32_t*) (buf + 1)) = htole32 (start);
 	*((uint32_t*) (buf + 5)) = htole32 (size);
+}
+
+
+TOCSection TOCSection::read_from_binary (ReadStream& rs)
+{
+	char buf[9];
+	rs.read (buf, 9);
+
+	uint8_t type = *((uint8_t*) buf);
+	uint32_t start = le32toh (*((uint32_t*) (buf + 1)));
+	uint32_t size = le32toh (*((uint32_t*) (buf + 5)));
+
+	switch (type)
+	{
+		case SEC_TYPE_DESC:
+		case SEC_TYPE_FILE_INDEX:
+		case SEC_TYPE_PREINST:
+		case SEC_TYPE_CONFIGURE:
+		case SEC_TYPE_UNCONFIGURE:
+		case SEC_TYPE_POSTRM:
+		case SEC_TYPE_ARCHIVE:
+		case SEC_TYPE_SIG_OPENPGP:
+			break;
+
+		default:
+			throw InvalidToc (rs.filename, "Invalid section type " + to_string(type));
+	}
+
+	return TOCSection(type, start, size);
 }
 
 
@@ -70,6 +145,31 @@ void TableOfContents::to_binary (char *buf) const
 
 	for (size_t i = 0; i < sections.size(); i++)
 		sections[i].to_binary (buf + 2 + i * TOCSection::binary_size);
+}
+
+
+TableOfContents TableOfContents::read_from_binary (ReadStream& rs)
+{
+	char buf[2];
+
+	rs.read(buf, 2);
+
+	uint8_t version = ((uint8_t*) buf)[0];
+	if (version != 1)
+		throw InvalidToc (rs.filename, "Invalid version " + to_string(version));
+
+	TableOfContents toc;
+	toc.version = version;
+
+	uint8_t sec_count = ((uint8_t*) buf)[1];
+
+	while (sec_count > 0)
+	{
+		toc.sections.emplace_back (TOCSection::read_from_binary (rs));
+		sec_count--;
+	}
+
+	return toc;
 }
 
 
@@ -268,6 +368,40 @@ string filename_from_mdata (const PackageMetaData& mdata)
 {
 	return mdata.name + "-" + mdata.version.to_string() + "_" +
 		Architecture::to_string (mdata.architecture) + ".tpm2";
+}
+
+
+ReadTransportForm read_transport_form (ReadStream& rs)
+{
+	ReadTransportForm rtf;
+
+	/* Read toc */
+	rtf.toc = TableOfContents::read_from_binary (rs);
+
+	/* Read desc section */
+	if (rtf.toc.sections.size() == 0 || rtf.toc.sections[0].type != SEC_TYPE_DESC)
+		throw InvalidToc (rs.filename, "There is no desc section.");
+
+	ManagedBuffer<char> buf(rtf.toc.sections[0].size);
+	rs.read (buf.buf, buf.size);
+
+	rtf.mdata = read_package_meta_data_from_xml (buf, buf.size);
+
+	/* Read the file index and ensure that the archive section is there if and
+	 * only if the index is in the file. */
+
+	return rtf;
+}
+
+
+InvalidToc::InvalidToc (const std::string& file, const std::string& msg)
+{
+	this->msg = "Invalid TOC in file \"" + file + "\": " + msg;
+}
+
+const char *InvalidToc::what () const noexcept
+{
+	return msg.c_str();
 }
 
 

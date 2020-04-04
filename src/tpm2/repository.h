@@ -12,23 +12,17 @@
 #include "version_number.h"
 
 
-/* Prototypes */
-class ProvidedPackage;
-
-
 class Repository
 {
 public:
-	virtual ~Repository() = 0 {};
+	virtual ~Repository() {};
 
 	virtual std::set<VersionNumber> list_package_versions (
 			const std::string &name, const int architecture) = 0;
 
-	virtual std::optional<ProvidedPackage> get_package (const std::string& name,
+	/* @returns A path to the package's transport form. */
+	virtual std::optional<std::string> get_package (const std::string& name,
 			const int architecture, const VersionNumber& version) = 0;
 };
-
-
-#include "PackageProvider.h"
 
 #endif /* __REPOSITORY_H */
