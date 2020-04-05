@@ -21,7 +21,7 @@
 class ProvidedPackage
 {
 private:
-	std::shared_ptr<PackageMetaData> md;
+	std::shared_ptr<PackageMetaData> mdata;
 
 	/* Referring to the original transport form */
 	TransportForm::TableOfContents toc;
@@ -34,10 +34,11 @@ private:
 public:
 	/* A constructor */
 	ProvidedPackage(
-			std::shared_ptr<PackageMetaData> md,
+			std::shared_ptr<PackageMetaData> mdata,
 			const TransportForm::TableOfContents& toc,
 			std::shared_ptr<TransportForm::ReadStream> rs);
 
+	std::shared_ptr<PackageMetaData> get_mdata();
 	std::shared_ptr<ManagedBuffer<char>> get_configure();
 
 	void clear_buffers();
@@ -53,12 +54,16 @@ private:
 	std::shared_ptr<Parameters> params;
 	std::vector<std::shared_ptr<Repository>> repositories;
 
-public:
+	/* Constructor */
 	PackageProvider (std::shared_ptr<Parameters> params);
+
+public:
+	/* Creator */
+	static std::shared_ptr<PackageProvider> create (std::shared_ptr<Parameters> params);
 
 	std::set<VersionNumber> list_package_versions (const std::string& name, const int architecture);
 
-	std::optional<ProvidedPackage> get_package (
+	std::shared_ptr<ProvidedPackage> get_package (
 			const std::string& name, const int architecture, const VersionNumber& version);
 };
 

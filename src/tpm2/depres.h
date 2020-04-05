@@ -14,10 +14,7 @@
 #include "package_meta_data.h"
 #include "dependencies.h"
 #include "package_constraints.h"
-
-
-#define CIG_SUCCESS													0
-#define CIG_INVALID_CURRENT_CONFIG									1
+#include "package_provider.h"
 
 
 namespace depres
@@ -27,6 +24,7 @@ namespace depres
 
 
 	ComputeInstallationGraphResult compute_installation_graph(
+			std::shared_ptr<Parameters> params,
 			std::vector<std::shared_ptr<PackageMetaData>> installed_packages,
 			std::vector<
 				std::pair<
@@ -43,10 +41,14 @@ namespace depres
 		std::shared_ptr<PackageMetaData> chosen_version;
 
 		std::optional<VersionNumber> currently_installed_version;
-		// std::shared_ptr<ProvidedPackage> provided_package;
+		std::shared_ptr<ProvidedPackage> provided_package;
+
+		bool manual = false;
 
 
-		/* These formulae are joined conjunctively */
+		/* These formulae are joined conjunctively. In the runtime constraints
+		 * may be one element with nullptr as key, which encodes a user
+		 * specifies constraint. */
 		std::map<InstallationGraphNode*,
 			std::shared_ptr<const PackageConstraints::Formula>> pre_constraints;
 
@@ -65,6 +67,8 @@ namespace depres
 		/* Constructors */
 		InstallationGraphNode(const std::string &name, const int architecture);
 
+		/* @param this_is_installed true means installed version + manual will
+		 *     be set automatically from @param chosen_version. */
 		InstallationGraphNode(const std::string &name, const int architecture,
 				bool this_is_installed,
 				std::shared_ptr<PackageMetaData> chosen_version);
@@ -76,12 +80,17 @@ namespace depres
 		 * nodes for adding edges. */
 		std::map<std::pair<std::string, int>, std::shared_ptr<InstallationGraphNode>> V;
 
-		void add(std::shared_ptr<InstallationGraphNode> n);
+		void add_node(std::shared_ptr<InstallationGraphNode> n);
 	};
 
 
 	struct ComputeInstallationGraphResult
 	{
+		static const int SUCCESS = 0;
+		static const int INVALID_CURRENT_CONFIG = 1;
+		static const int NOT_FULFILLABLE = 2;
+		static const int SOURCE_ERROR = 3;
+
 		const int status;
 		const std::string error_message;
 
@@ -93,7 +102,7 @@ namespace depres
 		{}
 
 		ComputeInstallationGraphResult(InstallationGraph g)
-			: status(CIG_SUCCESS), g(g)
+			: status(SUCCESS), g(g)
 		{}
 	};
 }

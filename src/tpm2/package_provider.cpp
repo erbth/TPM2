@@ -16,13 +16,13 @@ namespace tf = TransportForm;
 
 
 ProvidedPackage::ProvidedPackage (
-		shared_ptr<PackageMetaData> md,
+		shared_ptr<PackageMetaData> mdata,
 		const tf::TableOfContents& toc,
 		shared_ptr<tf::ReadStream> rs)
-	: md(md), toc(toc), rs(rs)
+	: mdata(mdata), toc(toc), rs(rs)
 {
-	if (!md || !rs)
-		throw invalid_argument ("md or rs nullptr");
+	if (!mdata || !rs)
+		throw invalid_argument ("mdata or rs nullptr");
 }
 
 
@@ -32,6 +32,12 @@ void ProvidedPackage::ensure_read_stream()
 	{
 		throw invalid_argument ("Reopening read streams is not implemented yet.");
 	}
+}
+
+
+shared_ptr<PackageMetaData> ProvidedPackage::get_mdata()
+{
+	return mdata;
 }
 
 
@@ -206,6 +212,12 @@ PackageProvider::PackageProvider (shared_ptr<Parameters> params)
 }
 
 
+shared_ptr<PackageProvider> PackageProvider::create (shared_ptr<Parameters> params)
+{
+	return shared_ptr<PackageProvider> (new PackageProvider (params));
+}
+
+
 set<VersionNumber> PackageProvider::list_package_versions (const string& name, const int architecture)
 {
 	set<VersionNumber> vs;
@@ -217,7 +229,7 @@ set<VersionNumber> PackageProvider::list_package_versions (const string& name, c
 }
 
 
-optional<ProvidedPackage> PackageProvider::get_package (const string& name,
+shared_ptr<ProvidedPackage> PackageProvider::get_package (const string& name,
 		const int architecture, const VersionNumber& version)
 {
 	for (auto &r : repositories)
@@ -230,9 +242,9 @@ optional<ProvidedPackage> PackageProvider::get_package (const string& name,
 
 			auto rtf = tf::read_transport_form (*rs);
 
-			return ProvidedPackage(rtf.mdata, rtf.toc, rs);
+			return make_shared<ProvidedPackage>(rtf.mdata, rtf.toc, rs);
 		}
 	}
 
-	return nullopt;
+	return nullptr;
 }

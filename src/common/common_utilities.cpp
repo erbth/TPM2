@@ -100,6 +100,23 @@ string convenient_readlink (const char *path)
 }
 
 
+string simplify_path (const string& path)
+{
+	char last = 0;
+	string new_path;
+
+	for (auto c : path)
+	{
+		if (c != '/' || last != '/')
+			new_path += c;
+
+		last = c;
+	}
+
+	return new_path;
+}
+
+
 gp_exception::gp_exception (const string& msg)
 	: msg(msg)
 {

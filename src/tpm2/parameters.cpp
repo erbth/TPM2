@@ -42,7 +42,7 @@ bool read_config_file (shared_ptr<Parameters> params)
 {
 	XMLDocument doc;
 
-	fs::path cfile(params->target + "/" + TPM2_CONFIG_FILE);
+	fs::path cfile(simplify_path(params->target + "/" + TPM2_CONFIG_FILE));
 
 	if (fs::is_regular_file (cfile))
 	{

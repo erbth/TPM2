@@ -136,28 +136,19 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 	}
 
 	depres::ComputeInstallationGraphResult r =
-		depres::compute_installation_graph(installed_packages, new_packages);
+		depres::compute_installation_graph(params, installed_packages, new_packages);
 
-	switch (r.status)
+	if (r.status != depres::ComputeInstallationGraphResult::SUCCESS)
 	{
-		case CIG_SUCCESS:
-			break;
+		fprintf (stderr, "Error: Failed to build the installation graph: %s\n",
+				r.error_message.c_str());
 
-		case CIG_INVALID_CURRENT_CONFIG:
-			fprintf (stderr, "Error: Failed to build the installation graph.\n");
-			fprintf (stderr, "Invalid current package configuration: %s\n",
-					r.error_message.c_str());
-
-			return false;
-
-		default:
-			fprintf (stderr, "Error: Failed to build the installation graph.\n");
-			return false;
+		return false;
 	}
 
 
 	/* Print it. */
-	printf ("digraph \"Dependencies\" {\n");
+	printf ("digraph Dependencies {\n");
 
 	map<depres::InstallationGraphNode*, int> node_indeces;
 
@@ -174,6 +165,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 	{
 		shared_ptr<depres::InstallationGraphNode> node = p.second;
 		auto cv = node->chosen_version;
+		auto& iv = node->currently_installed_version;
 
 		if (!cv)
 		{
@@ -184,11 +176,35 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 			return false;
 		}
 
-		printf ("    %d [label=\"%s@%s:%s\"];\n",
-				node_indeces[node.get()],
-				cv->name.c_str(),
-				Architecture::to_string(cv->architecture).c_str(),
-				cv->version.to_string().c_str());
+		printf ("    %d [label=\"", node_indeces[node.get()]);
+
+		if (!iv)
+		{
+			string irs;
+
+			switch (cv->installation_reason)
+			{
+				case INSTALLATION_REASON_AUTO:
+					irs = "auto";
+					break;
+
+				case INSTALLATION_REASON_MANUAL:
+					irs = "manual";
+					break;
+
+				default:
+					irs = "invalid";
+					break;
+			}
+
+			printf ("Missing_pkg (%s, %s, %s, %s)",
+					node->name.c_str(),
+					Architecture::to_string(node->architecture).c_str(),
+					irs.c_str(),
+					cv->version.to_string().c_str());
+		}
+
+		printf ("\"];\n");
 
 
 		for (auto d : node->pre_dependencies)

@@ -26,6 +26,12 @@ std::string convenient_readlink (const std::string& path);
 std::string convenient_readlink (const char *path);
 
 
+/* Simplify a path, that is remove all double slashes. Compared to libc's
+ * readlpath this does not access the filesystem, but likewise not expand
+ * symbolic links. */
+std::string simplify_path (const std::string& path);
+
+
 /* An exception for general purposes, i.e. when things should not have happened
  * or to deliver a simple error message. */
 class gp_exception : public std::exception
