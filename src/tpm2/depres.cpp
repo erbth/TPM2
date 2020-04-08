@@ -1,6 +1,7 @@
 #include "depres.h"
 #include <set>
 #include "architecture.h"
+#include "common_utilities.h"
 
 using namespace std;
 
@@ -9,12 +10,12 @@ namespace depres
 {
 
 ComputeInstallationGraphResult compute_installation_graph(
-		std::shared_ptr<Parameters> params,
-		std::vector<std::shared_ptr<PackageMetaData>> installed_packages,
-		std::vector<
-			std::pair<
-				std::pair<const std::string, int>,
-				std::shared_ptr<const PackageConstraints::Formula>
+		shared_ptr<Parameters> params,
+		vector<shared_ptr<PackageMetaData>> installed_packages,
+		vector<
+			pair<
+				pair<const string, int>,
+				shared_ptr<const PackageConstraints::Formula>
 			>
 		> new_packages)
 {
@@ -306,5 +307,167 @@ void InstallationGraph::add_node(shared_ptr<InstallationGraphNode> n)
 {
 	V.insert({{n->name, n->architecture}, n});
 }
+
+
+/* To serialize an installation graph.
+ *
+ * If @param pre_deps is set, pre-dependencies are used instead of dependencies.
+ */
+void visit (contracted_node H[], list<InstallationGraphNode*>& serialized, int v)
+{
+	/* There are a more sophisticated approaches to installing one SCC ...
+	 */
+	for (InstallationGraphNode *ig_node : H[v].original_nodes)
+		serialized.push_back (ig_node);
+
+	for (int w : H[v].children)
+	{
+		H[w].unvisited_parents.erase (v);
+		
+		if (H[w].unvisited_parents.size() == 0)
+			visit (H, serialized, w);
+	}
+}
+
+list<InstallationGraphNode*> serialize_igraph (
+		const InstallationGraph& igraph, bool pre_deps)
+{
+	/* Construct a data structure to hold the nodes' working variables and
+	 * adjacency lists. */
+	int cnt_nodes = igraph.V.size();
+	unique_ptr<scc_node[]> nodes = unique_ptr<scc_node[]> (new scc_node[cnt_nodes]);
+
+	auto iter = igraph.V.begin();
+
+	for (int i = 0; i < cnt_nodes; i++)
+	{
+		nodes[i].igraph_node = iter->second.get();
+		nodes[i].igraph_node->algo_priv = i;
+
+		iter++;
+	}
+
+	for (int i = 0; i < cnt_nodes; i++)
+	{
+		if (pre_deps)
+		{
+			for (InstallationGraphNode* dep : nodes[i].igraph_node->pre_dependencies)
+				nodes[i].children.push_back (dep->algo_priv);
+		}
+		else
+		{
+			for (InstallationGraphNode* dep : nodes[i].igraph_node->dependencies)
+				nodes[i].children.push_back (dep->algo_priv);
+		}
+	}
+
+
+	/* Run Tarjan's algorithm */
+	int count_sccs = find_scc (cnt_nodes, nodes.get());
+
+
+	/* Construct the graph with the original graph's SCCs contracted and
+	 * traverse it in such a way that a node is output only after all its
+	 * ancestors are visited. */
+	unique_ptr<contracted_node[]> H = unique_ptr<contracted_node[]> (new contracted_node[count_sccs]);
+
+	/* It's important to transpose the graph here to do the traversal along
+	 * edges in forward direction. */
+	for (int v = 0; v < cnt_nodes; v++)
+	{
+		H[nodes[v].SCC].original_nodes.push_back (nodes[v].igraph_node);
+
+		for (int w : nodes[v].children)
+		{
+			if (nodes[v].SCC != nodes[w].SCC)
+			{
+				H[nodes[w].SCC].children.insert (nodes[v].SCC);
+				H[nodes[v].SCC].unvisited_parents.insert (nodes[w].SCC);
+				H[nodes[v].SCC].has_parent = true;
+			}
+		}
+	}
+
+	/* Obviously it's enough to ensure that all parents were visited before. */
+	list<InstallationGraphNode*> serialized;
+
+	for (int v = 0; v < count_sccs; v++)
+	{
+		if (!H[v].has_parent)
+			visit (H.get(), serialized, v);
+	}
+
+	return serialized;
+}
+
+
+/* Tarjan's strongly connected components algorithm
+ * @returns the count of SCCs. */
+void STRONGCONNECT (scc_node nodes[], vector<int>& working_stack, int& i, int& j, int v)
+{
+	nodes[v].LOWPT = nodes[v].LOWVINE = nodes[v].NUMBER = i;
+	i++;
+
+	nodes[v].ONDFSSTACK = true;
+
+	working_stack.push_back (v);
+	nodes[v].ONSTACK = true;
+
+
+	for (int w : nodes[v].children)
+	{
+		if (nodes[w].NUMBER == -1)
+		{
+			/* Tree arc */
+			STRONGCONNECT (nodes, working_stack, i, j, w);
+			nodes[v].LOWPT = MIN(nodes[v].LOWPT, nodes[w].LOWPT);
+			nodes[v].LOWVINE = MIN(nodes[v].LOWVINE, nodes[w].LOWVINE);
+		}
+		else if (nodes[w].ONDFSSTACK)
+		{
+			/* Frond */
+			nodes[v].LOWPT = MIN(nodes[v].LOWPT, nodes[w].NUMBER);
+		}
+		else if (nodes[w].NUMBER < nodes[v].NUMBER)
+		{
+			/* Vine */
+			if (nodes[w].ONSTACK)
+				nodes[v].LOWVINE = MIN(nodes[v].LOWVINE, nodes[w].NUMBER);
+		}
+	}
+
+	if (nodes[v].LOWPT == nodes[v].NUMBER && nodes[v].LOWVINE == nodes[v].NUMBER)
+	{
+		while (working_stack.size() > 0 &&
+				nodes[working_stack.back()].NUMBER >= nodes[v].NUMBER)
+		{
+			nodes[working_stack.back()].SCC = j;
+			nodes[working_stack.back()].ONSTACK = false;
+			working_stack.pop_back();
+		}
+
+		j++;
+	}
+
+	nodes[v].ONDFSSTACK = false;
+}
+
+
+int find_scc (int cnt_nodes, scc_node nodes[])
+{
+	int i = 0;
+	int j = 0;
+
+	vector<int> working_stack;
+
+	for (int v = 0; v < cnt_nodes; v++)
+	{
+		if (nodes[v].NUMBER == -1)
+			STRONGCONNECT (nodes, working_stack, i, j, v);
+	}
+
+	return j;
+}
+
 
 }

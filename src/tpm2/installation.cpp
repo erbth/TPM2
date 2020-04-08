@@ -230,13 +230,78 @@ bool install_packages(shared_ptr<Parameters> params)
 {
 	print_target(params);
 
-	/* Find package in repo and resolve its dependencies, recursively. */
+	/* Read the package database */
+	PackageDB pkgdb(params);
+	vector<shared_ptr<PackageMetaData>> installed_packages =
+		pkgdb.get_packages_in_state (ALL_PKG_STATES);
 
-	/* Determine an installation order */
+	/* Ensure that the system is in a clean state */
+	for (auto mdata : installed_packages)
+	{
+		if (mdata->state != PKG_STATE_CONFIGURED)
+		{
+			fprintf (stderr, "System is not in a clean state. Package "
+					"%s@%s:%s is not in state configured.\n",
+					mdata->name.c_str(),
+					Architecture::to_string (mdata->architecture).c_str(),
+					mdata->version.to_string().c_str());
 
-	/* Determine an configuration order */
+			return false;
+		}
+	}
 
-	/* Low-level install the packages */
+	/* Find packages in repo and resolve their dependencies, recursively. For
+	 * this I have the depres module. */
+	vector<pair<pair<const string, int>, shared_ptr<const PackageConstraints::Formula>>> new_packages;
+
+	for (const auto& pkg : params->operation_packages)
+	{
+		auto res = parse_cmd_param (*params, pkg);
+		if (!res.success)
+		{
+			fprintf (stderr, "Unknown package description: %s (%s)\n",
+					res.pkg.c_str(), res.err.c_str());
+			return false;
+		}
+
+		new_packages.emplace_back (make_pair (
+					make_pair (res.name, res.arch), res.vc));
+	}
+
+	depres::ComputeInstallationGraphResult comp_igraph_res =
+		depres::compute_installation_graph (params, installed_packages, new_packages);
+
+	if (comp_igraph_res.status != depres::ComputeInstallationGraphResult::SUCCESS)
+	{
+		fprintf (stderr, "Failed to build the installation graph: %s\n",
+				comp_igraph_res.error_message.c_str());
+
+		return false;
+	}
+
+	depres::InstallationGraph& igraph = comp_igraph_res.g;
+
+
+	/* Determine an unpack and a configuration order */
+	list<depres::InstallationGraphNode*> unpack_order = depres::serialize_igraph (
+			igraph, true);
+
+	list<depres::InstallationGraphNode*> configuration_order = depres::serialize_igraph (
+			igraph, false);
+
+
+	printf ("Unpack order:\n");
+	for (auto ig_node : unpack_order)
+	{
+		printf ("    %s\n", ig_node->chosen_version->name.c_str());
+	}
+
+	printf ("\nConfiguration order:\n");
+	for (auto ig_node : configuration_order)
+		printf ("    %s\n", ig_node->chosen_version->name.c_str());
+
+
+	/* Low-level unpack the packages */
 
 	/* Low-level configure the packages */
 

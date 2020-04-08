@@ -64,6 +64,12 @@ namespace depres
 		std::set<InstallationGraphNode*> dependees;
 
 
+		/* Private data to use by algorithms etc. Must not be relied on to be
+		 * present after the function that uses them exits, however it is not
+		 * altered by the graph's members. Only by third entities. */
+		ssize_t algo_priv;
+
+
 		/* Constructors */
 		InstallationGraphNode(const std::string &name, const int architecture);
 
@@ -105,6 +111,38 @@ namespace depres
 			: status(SUCCESS), g(g)
 		{}
 	};
+
+
+	/* To serialize an installation graph */
+	std::list<InstallationGraphNode*> serialize_igraph (
+			const InstallationGraph& igraph, bool pre_deps);
+
+	struct contracted_node {
+		std::list<InstallationGraphNode*> original_nodes;
+
+		std::set<int> children;
+		
+		std::set<int> unvisited_parents;
+		bool has_parent = false;
+	};
+
+	/* Tarjan's strongly connected components algorithm */
+	struct scc_node {
+		InstallationGraphNode* igraph_node = nullptr;
+
+		std::list<int> children;
+
+		int NUMBER = -1;
+		int LOWPT = 0;
+		int LOWVINE = 0;
+
+		bool ONDFSSTACK = false;
+		bool ONSTACK = false;
+
+		int SCC = 0;
+	};
+
+	int find_scc (int cnt_nodes, scc_node nodes[]);
 }
 
 #endif /* __DEPRES_H */
