@@ -41,6 +41,30 @@ shared_ptr<PackageMetaData> ProvidedPackage::get_mdata()
 }
 
 
+shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_preinst()
+{
+	if (!preinst)
+	{
+		for (auto& sec : toc.sections)
+		{
+			if (sec.type == tf::SEC_TYPE_PREINST)
+			{
+				ensure_read_stream();
+
+				if (rs->tell() != sec.start)
+					rs->seek (sec.start);
+
+				preinst = make_shared<ManagedBuffer<char>>(sec.size);
+				rs->read (preinst->buf, sec.size);
+				break;
+			}
+		}
+	}
+
+	return preinst;
+}
+
+
 shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_configure()
 {
 	if (!configure)
@@ -65,10 +89,75 @@ shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_configure()
 }
 
 
+shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_unconfigure()
+{
+	if (!unconfigure)
+	{
+		for (auto& sec : toc.sections)
+		{
+			if (sec.type == tf::SEC_TYPE_UNCONFIGURE)
+			{
+				ensure_read_stream();
+
+				if (rs->tell() != sec.start)
+					rs->seek(sec.start);
+
+				unconfigure = make_shared<ManagedBuffer<char>>(sec.size);
+				rs->read (unconfigure->buf, sec.size);
+				break;
+			}
+		}
+	}
+
+	return unconfigure;
+}
+
+
+shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_postrm()
+{
+	if (!postrm)
+	{
+		for (auto& sec : toc.sections)
+		{
+			if (sec.type == tf::SEC_TYPE_POSTRM)
+			{
+				ensure_read_stream();
+
+				if (rs->tell() != sec.start)
+					rs->seek(sec.start);
+
+				postrm = make_shared<ManagedBuffer<char>>(sec.size);
+				rs->read (postrm->buf, sec.size);
+				break;
+			}
+		}
+	}
+
+	return postrm;
+}
+
+
+bool ProvidedPackage::has_archive ()
+{
+	for (auto& sec : toc.sections)
+	{
+		if (sec.type == tf::SEC_TYPE_ARCHIVE)
+		{
+			return sec.size > 0;
+		}
+	}
+
+	return false;
+}
+
+
 void ProvidedPackage::clear_buffers()
 {
 	rs = nullptr;
+	preinst = nullptr;
 	configure = nullptr;
+	unconfigure = nullptr;
+	postrm = nullptr;
 }
 
 
@@ -90,6 +179,9 @@ void ProvidedPackage::unpack_archive_to_directory(const string& dst)
 			break;
 		}
 	}
+
+	if (!archive_size)
+		return;
 
 
 	/* Start Tar as subprocess */
@@ -114,7 +206,7 @@ void ProvidedPackage::unpack_archive_to_directory(const string& dst)
 	if (pid == 0)
 	{
 		/* In the child */
-		ret = dup2 (STDIN_FILENO, pipefds[0]);
+		ret = dup2 (pipefds[0], STDIN_FILENO);
 		if (ret < 0)
 		{
 			fprintf (stderr, "Failed to replace stdin: %s.\n", strerror (errno));

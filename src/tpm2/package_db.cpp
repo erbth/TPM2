@@ -45,6 +45,15 @@ PackageDB::PackageDB(shared_ptr<Parameters> params)
 		throw CannotOpenDB(err, path);
 	}
 
+	/* If even WAL is to slow, I may consider using MEMORY at the cost of worse
+	 * db integrity. */
+	err = sqlite3_exec (pDb, "pragma journal_mode = WAL;", nullptr, nullptr, nullptr);
+	if (err != SQLITE_OK)
+	{
+		sqlite3_close(pDb);
+		throw sqlitedb_exception (err, pDb);
+	}
+
 
 	/* Create the database schema if required. */
 	try
@@ -292,8 +301,9 @@ void PackageDB::ensure_schema()
 						"type integer,"
 						"digest varchar not null,"
 						"primary key (path, pkg_name, pkg_architecture, pkg_version),"
-						"foreign key (pkg_name, pkg_architecture, pkg_version)"
-							"references packages (name, architecture, version));",
+						"foreign key (pkg_name, pkg_architecture, pkg_version) "
+							"references packages (name, architecture, version) "
+							"on update cascade on delete cascade);",
 					nullptr, nullptr, nullptr);
 
 			if (err != SQLITE_OK)
@@ -309,8 +319,9 @@ void PackageDB::ensure_schema()
 						"architecture integer,"
 						"constraints varchar not null,"
 						"primary key (pkg_name, pkg_architecture, pkg_version, name, architecture),"
-						"foreign key (pkg_name, pkg_architecture, pkg_version)"
-							"references packages (name, architecture, version));",
+						"foreign key (pkg_name, pkg_architecture, pkg_version) "
+							"references packages (name, architecture, version) "
+							"on update cascade on delete cascade);",
 					nullptr, nullptr, nullptr);
 
 			if (err != SQLITE_OK)
@@ -326,8 +337,9 @@ void PackageDB::ensure_schema()
 						"architecture integer,"
 						"constraints varchar not null,"
 						"primary key (pkg_name, pkg_architecture, pkg_version, name, architecture),"
-						"foreign key (pkg_name, pkg_architecture, pkg_version)"
-							"references packages (name, architecture, version));",
+						"foreign key (pkg_name, pkg_architecture, pkg_version) "
+							"references packages (name, architecture, version) "
+							"on update cascade on delete cascade);",
 					nullptr, nullptr, nullptr);
 
 			if (err != SQLITE_OK)
@@ -629,6 +641,306 @@ vector<shared_ptr<PackageMetaData>> PackageDB::get_packages_in_state(const int s
 	}
 
 	return pkgs;
+}
+
+
+bool PackageDB::update_or_create_package (shared_ptr<PackageMetaData> mdata)
+{
+	sqlite3_stmt *pStmt = nullptr;
+
+	try
+	{
+		int err = sqlite3_prepare_v2 (pDb,
+				"select count(*) from packages p "
+				"where p.name = ?1 and p.architecture = ?2 and p.version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, mdata->version.to_string().c_str(), -1, SQLITE_TRANSIENT);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_ROW)
+			throw sqlitedb_exception (err, pDb);
+
+		if (sqlite3_column_count (pStmt) != 1)
+			throw PackageDBException ("Invalid columns count while determining if a package exists already.");
+
+		int cnt = sqlite3_column_int (pStmt, 0);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
+		if (cnt == 0)
+		{
+			err = sqlite3_prepare_v2 (pDb,
+					"insert into packages "
+					"(name, architecture, version , source_version, state, installation_reason) "
+					"values (?1, ?2, ?3, ?4, ?5, ?6);",
+					-1, &pStmt, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 3, mdata->version.to_string().c_str(), -1, SQLITE_TRANSIENT);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 4, mdata->source_version.to_string().c_str(), -1, SQLITE_TRANSIENT);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 5, mdata->state);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 6, mdata->installation_reason);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_step (pStmt);
+			if (err != SQLITE_DONE)
+				throw sqlitedb_exception (err, pDb);
+
+			sqlite3_finalize (pStmt);
+			pStmt = nullptr;
+
+			return true;
+		}
+		else
+		{
+			err = sqlite3_prepare_v2 (pDb,
+					"update packages "
+					"set source_version = ?4, state = ?5, installation_reason = ?6 "
+					"where name = ?1 and architecture = ?2 and version = ?3;",
+					-1, &pStmt, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 3, mdata->version.to_string().c_str(), -1, SQLITE_TRANSIENT);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 4, mdata->source_version.to_string().c_str(), -1, SQLITE_TRANSIENT);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 5, mdata->state);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 6, mdata->state);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_step (pStmt);
+			if (err != SQLITE_DONE)
+				throw sqlitedb_exception (err, pDb);
+
+			sqlite3_finalize (pStmt);
+			pStmt = nullptr;
+
+			return false;
+		}
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
+void PackageDB::update_state (std::shared_ptr<PackageMetaData> mdata)
+{
+	sqlite3_stmt *pStmt = nullptr;
+	const string& version_string = mdata->version.to_string();
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"update packages set state = ?4 "
+				"where name = ?1 and architecture = ?2 and version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 4, mdata->state);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
+void PackageDB::set_dependencies (std::shared_ptr<PackageMetaData> mdata)
+{
+	sqlite3_stmt *pStmt = nullptr;
+	const string& version_string = mdata->version.to_string();
+
+	const char *delete_statements[2] = {
+		"delete from pre_dependencies "
+		"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+		"delete from dependencies "
+		"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;"
+	};
+
+	const char *insert_statements[2] = {
+		"insert into pre_dependencies "
+		"(pkg_name, pkg_architecture, pkg_version, name, architecture, constraints) "
+		"values (?1, ?2, ?3, ?4, ?5, ?6);",
+		"insert into dependencies "
+		"(pkg_name, pkg_architecture, pkg_version, name, architecture, constraints) "
+		"values (?1, ?2, ?3, ?4, ?5, ?6);"
+	};
+
+	try
+	{
+		for (unsigned char i = 0; i < 2; i++)
+		{
+			auto err = sqlite3_prepare_v2 (pDb,
+					delete_statements[i],
+					-1, &pStmt, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_step (pStmt);
+			if (err != SQLITE_DONE)
+				throw sqlitedb_exception (err, pDb);
+
+			sqlite3_finalize (pStmt);
+			pStmt = nullptr;
+
+
+			const auto& deps = i ? mdata->dependencies : mdata->pre_dependencies;
+			for (auto j = deps.cbegin(); j != deps.cend(); j++)
+			{
+				const auto& dep = *j;
+
+				err = sqlite3_prepare_v2 (pDb,
+						insert_statements[i],
+						-1, &pStmt, nullptr);
+
+				if (err != SQLITE_OK)
+					throw sqlitedb_exception (err, pDb);
+
+				err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+				if (err != SQLITE_OK)
+					throw sqlitedb_exception (err, pDb);
+
+				err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+				if (err != SQLITE_OK)
+					throw sqlitedb_exception (err, pDb);
+
+				err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+				if (err != SQLITE_OK)
+					throw sqlitedb_exception (err, pDb);
+
+				err = sqlite3_bind_text (pStmt, 4,
+						dep.identifier.first.c_str(), dep.identifier.first.size(),
+						SQLITE_STATIC);
+
+				if (err != SQLITE_OK)
+					throw sqlitedb_exception (err, pDb);
+
+				err = sqlite3_bind_int (pStmt, 5, dep.identifier.second);
+				if (err != SQLITE_OK)
+					throw sqlitedb_exception (err, pDb);
+
+				const string& constraints = dep.version_formula ? dep.version_formula->to_string() : string();
+
+				/* Transient because I'm not sure if the string has to survive
+				 * until sqlite3_finalize. */
+				err = sqlite3_bind_text (pStmt, 6, constraints.c_str(), constraints.size(), SQLITE_TRANSIENT);
+				if (err != SQLITE_OK)
+					throw sqlitedb_exception (err, pDb);
+
+				err = sqlite3_step (pStmt);
+				if (err != SQLITE_DONE)
+					throw sqlitedb_exception (err, pDb);
+
+				sqlite3_finalize (pStmt);
+				pStmt = nullptr;
+			}
+		}
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
 }
 
 

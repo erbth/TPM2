@@ -27,6 +27,8 @@ namespace TransportForm
 	public:
 		/* @raises std::system_error if it cannot open the file. */
 		Writer (const std::string& filename);
+		Writer (const Writer& o) = delete;
+
 		~Writer ();
 
 		/* @returns 0 on success or -errno value in case of error */
@@ -44,6 +46,8 @@ namespace TransportForm
 
 		/* @raises std::system_error if it cannot open the file. */
 		ReadStream (const std::string& filename);
+		ReadStream (const ReadStream& o) = delete;
+
 		~ReadStream();
 
 		/* If not all data could be read, the function raises an exception.

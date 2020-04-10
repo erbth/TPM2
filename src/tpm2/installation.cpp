@@ -238,10 +238,10 @@ bool install_packages(shared_ptr<Parameters> params)
 	/* Ensure that the system is in a clean state */
 	for (auto mdata : installed_packages)
 	{
-		if (mdata->state != PKG_STATE_CONFIGURED)
+		if (mdata->state != PKG_STATE_CONFIGURED && mdata->state != PKG_STATE_CONFIGURE_BEGIN)
 		{
 			fprintf (stderr, "System is not in a clean state. Package "
-					"%s@%s:%s is not in state configured.\n",
+					"%s@%s:%s is not in an accepted state.\n",
 					mdata->name.c_str(),
 					Architecture::to_string (mdata->architecture).c_str(),
 					mdata->version.to_string().c_str());
@@ -290,20 +290,186 @@ bool install_packages(shared_ptr<Parameters> params)
 			igraph, false);
 
 
-	printf ("Unpack order:\n");
+	/* Set package states of new packages to wanted. They are invalid now. */
 	for (auto ig_node : unpack_order)
 	{
-		printf ("    %s\n", ig_node->chosen_version->name.c_str());
+		if (ig_node->chosen_version->state == PKG_STATE_INVALID)
+			ig_node->chosen_version->state = PKG_STATE_WANTED;
 	}
 
-	printf ("\nConfiguration order:\n");
-	for (auto ig_node : configuration_order)
-		printf ("    %s\n", ig_node->chosen_version->name.c_str());
-
-
 	/* Low-level unpack the packages */
+	printf ("Unpacking packages.\n");
+
+	for (auto ig_node : unpack_order)
+	{
+		if (ig_node->chosen_version->state == PKG_STATE_WANTED)
+		{
+			if (!ll_unpack_package (params, pkgdb, ig_node->provided_package))
+				return false;
+		}
+	}
 
 	/* Low-level configure the packages */
+	if (params->target_is_native())
+	{
+		printf ("Configuring packages.\n");
+
+		for (auto ig_node : configuration_order)
+		{
+			if (ig_node->chosen_version->state == PKG_STATE_CONFIGURE_BEGIN)
+			{
+				if (!ll_configure_package (params, pkgdb, ig_node->chosen_version,
+							ig_node->provided_package, ig_node->sms))
+					return false;
+			}
+		}
+	}
+	else
+	{
+		printf ("Not configuring packages because the target is not native.\n");
+	}
+
+	return true;
+}
+
+
+bool ll_unpack_package (
+		shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		shared_ptr<ProvidedPackage> pp)
+{
+	auto mdata = pp->get_mdata();
+
+	printf ("ll unpacking package %s@%s\n", mdata->name.c_str(),
+			Architecture::to_string (mdata->architecture).c_str());
+
+	/* Create DB tuple to make the operation transactional and store maintainer
+	 * scripts. */
+	printf ("  Creating db tuple and storing maintainer scripts ...");
+	fflush (stdout);
+
+	try
+	{
+		pkgdb.begin();
+
+		mdata->state = PKG_STATE_PREINST_BEGIN;
+
+		pkgdb.update_or_create_package (mdata);
+		pkgdb.set_dependencies (mdata);
+
+		StoredMaintainerScripts sms (params, mdata,
+				pp->get_preinst(),
+				pp->get_configure(),
+				pp->get_unconfigure(),
+				pp->get_postrm());
+
+		sms.write();
+
+		pkgdb.commit();
+
+		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+	}
+	catch (exception& e)
+	{
+		pkgdb.rollback();
+		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf ("%s\n", e.what());
+		return false;
+	}
+	catch (...)
+	{
+		pkgdb.rollback();
+		throw;
+	}
+
+
+	/* Run preinst if available */
+	try
+	{
+		printf ("  Running preinst script ...");
+		fflush (stdout);
+
+		auto preinst = pp->get_preinst();
+		if (preinst)
+			run_script (params, *preinst);
+
+		mdata->state = PKG_STATE_UNPACK_BEGIN;
+		pkgdb.update_state (mdata);
+
+		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+	}
+	catch (exception& e)
+	{
+		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf ("%s\n", e.what());
+		return false;
+	}
+
+
+	/* Unpack the archive */
+	try
+	{
+		printf ("  Unpacking the package's archive ...");
+		fflush (stdout);
+
+		if (pp->has_archive())
+			pp->unpack_archive_to_directory (params->target);
+
+		mdata->state = PKG_STATE_CONFIGURE_BEGIN;
+		pkgdb.update_state (mdata);
+
+		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+	}
+	catch (exception& e)
+	{
+		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf ("%s\n", e.what());
+		return false;
+	}
+
+	return true;
+}
+
+
+bool ll_configure_package (
+		shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		shared_ptr<PackageMetaData> mdata,
+		shared_ptr<ProvidedPackage> pp,
+		shared_ptr<StoredMaintainerScripts> sms)
+{
+	printf ("ll configuring package %s@%s\n",
+			mdata->name.c_str(), Architecture::to_string (mdata->architecture).c_str());
+
+	if (!pp && !sms)
+	{
+		fprintf (stderr, "Internal error: Neither pp nor sms specified.");
+		return false;
+	}
+
+
+	try
+	{
+		printf ("  Running configure script ...");
+		fflush (stdout);
+
+
+		auto configure = pp ? pp->get_configure() : sms->get_configure();
+		if (configure)
+			run_script (params, *configure);
+
+
+		mdata->state = PKG_STATE_CONFIGURED;
+		pkgdb.update_state (mdata);
+
+		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+	}
+	catch (exception& e)
+	{
+		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf ("%s\n", e.what());
+		return false;
+	}
 
 	return true;
 }

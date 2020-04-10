@@ -28,11 +28,16 @@ ComputeInstallationGraphResult compute_installation_graph(
 	/* Add all installed packages to the installation graph */
 	for (auto p : installed_packages)
 	{
-		g.add_node(make_shared<InstallationGraphNode>(
-					p->name,
-					p->architecture,
-					true,
-					p));
+		auto node = make_shared<InstallationGraphNode>(
+				p->name,
+				p->architecture,
+				true,
+				p);
+
+		node->sms = make_shared<StoredMaintainerScripts> (params, p);
+		node->sms->clear_buffers();
+
+		g.add_node(node);
 	}
 
 	/* Add dependencies of installed packages to the installation graph */

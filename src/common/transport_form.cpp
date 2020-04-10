@@ -277,7 +277,7 @@ TableOfContents TransportForm::get_toc() const
 
 
 	/* Update offsets */
-	uint32_t pos = 2;
+	uint32_t pos = t.binary_size();
 
 	for (auto& s : t.sections)
 	{

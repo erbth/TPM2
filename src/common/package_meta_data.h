@@ -21,7 +21,10 @@
  * should not be stored in the db ... */
 #define PKG_STATE_INVALID				0
 #define PKG_STATE_WANTED				1
-#define PKG_STATE_CONFIGURED			2
+#define PKG_STATE_PREINST_BEGIN			2
+#define PKG_STATE_UNPACK_BEGIN			3
+#define PKG_STATE_CONFIGURE_BEGIN		4
+#define PKG_STATE_CONFIGURED			5
 
 /* Only for selecting packages */
 #define ALL_PKG_STATES					1000

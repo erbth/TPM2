@@ -15,6 +15,7 @@
 #include "dependencies.h"
 #include "package_constraints.h"
 #include "package_provider.h"
+#include "stored_maintainer_scripts.h"
 
 
 namespace depres
@@ -41,7 +42,10 @@ namespace depres
 		std::shared_ptr<PackageMetaData> chosen_version;
 
 		std::optional<VersionNumber> currently_installed_version;
+
+		/* One of these two must be provided ... */
 		std::shared_ptr<ProvidedPackage> provided_package;
+		std::shared_ptr<StoredMaintainerScripts> sms;
 
 		bool manual = false;
 

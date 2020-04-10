@@ -32,12 +32,24 @@ public:
 
 	std::vector<std::shared_ptr<PackageMetaData>> get_packages_in_state(const int state);
 
+	/* This updates or creates only the tuple in the packages relation, that is
+	 * name, architecture, version, source version, state and installation
+	 * reason. @returns true if the tuple was created, false if it was only
+	 * updated. */
+	bool update_or_create_package (std::shared_ptr<PackageMetaData> mdata);
 
-private:
+	void update_state (std::shared_ptr<PackageMetaData> mdata);
+
+	/* Sets the pre-dependencies and dependencies to the values given in the
+	 * metadata object */
+	void set_dependencies (std::shared_ptr<PackageMetaData> mdata);
+
+
 	void begin();
 	void rollback();
 	void commit();
 
+private:
 	void ensure_schema();
 };
 

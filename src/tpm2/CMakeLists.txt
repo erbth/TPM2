@@ -7,6 +7,7 @@ add_executable(tpm2
 	package_db.cpp
 	package_provider.cpp
 	directory_repository.cpp
+	stored_maintainer_scripts.cpp
 	../common/package_constraints.cpp
 	../common/dependencies.cpp
 	../common/package_meta_data.cpp

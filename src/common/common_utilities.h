@@ -14,6 +14,10 @@
 #define MIN(X,Y) (X < Y ? X : Y)
 #define MAX(X,Y) (X > Y ? X : Y)
 
+#define COLOR_NORMAL "\033[0m"
+#define COLOR_RED "\033[31m"
+#define COLOR_GREEN "\033[32m"
+
 /* Get the abslute path of a potentially relaive path.
  *
  * @param path The path to expand

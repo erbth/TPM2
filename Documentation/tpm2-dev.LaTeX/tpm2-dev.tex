@@ -6,7 +6,7 @@
 \usepackage[utf8]{inputenc}
 \usepackage[english]{babel}
 \usepackage{tabularx}
-\usepackage{xcolor}
+\usepackage[dvipsnames]{xcolor}
 \usepackage{dirtree}
 \usepackage[hidelinks]{hyperref}
 \usepackage{algpseudocode}
@@ -194,6 +194,8 @@
 	
 	In other words, as long as no conflicting packages are part of the system it's easy. Conflicting packages can be there in transient states, however not in an accepted state (i.e. configured).
 	
+	For Installation I would like to consider the install direction (green arrows) only for now. If one stage fails, the installation shall abort and leave the system in an unclean state to be cleaned by \texttt{--recover}. If the target system is not native, the packages shall not be configured and hence left in state configure\_begin.
+	
 	\begin{figure}[ht]
 		\centering
 		
@@ -210,13 +212,18 @@
 			\node[state, below of=unpack_begin] (configure_begin) {configure\_begin};
 			\node[state, accepting, left of=configure_begin] (configured) {configured};
 			
-			\draw	(wanted) edge[above, bend left] node{$ $} (preinst_begin)
-					(preinst_begin) edge[above, bend left] node{\program{preinst} = 0} (unpack_begin)
-					(unpack_begin) edge[right, bend left] node{\textit{unpack}} (configure_begin)
-					(configure_begin) edge[below, bend left] node{\program{configure} = 0} (configured);
+			\draw	(wanted) edge[above, bend left, color=Green] node{$ $} (preinst_begin)
+					(preinst_begin) edge[below, bend left] node{\program{prerm abort}} (wanted);
 					
-			\draw 	(preinst_begin) edge[below, bend left] node{\program{prerm abort}} (wanted)
+					
+			\draw	(preinst_begin) edge[above, bend left, color=Green] node{\program{preinst}} (unpack_begin)
 					(unpack_begin) edge[below, bend left] node{\textit{rm files}} (preinst_begin);
+					
+			\draw	(unpack_begin) edge[right, bend left, color=Green] node{\textit{unpack}} (configure_begin)
+					(configure_begin) edge[left, bend left] node{\program{unconfigure}} (unpack_begin);
+					
+			\draw	(configure_begin) edge[below, bend left, color=Green] node{\program{configure}} (configured);
+					
 			
 			
 		\end{tikzpicture}
