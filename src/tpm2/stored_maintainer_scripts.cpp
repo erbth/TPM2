@@ -13,13 +13,16 @@ StoredMaintainerScripts::StoredMaintainerScripts (
 		shared_ptr<PackageMetaData> mdata)
 	: params(params), mdata(mdata)
 {
-	ensure_read_stream();
-
 	/* Read the toc */
 	if (fs::is_regular_file (get_path ()))
+	{
+		ensure_read_stream();
 		toc = tf::TableOfContents::read_from_binary (*rs);
+	}
 	else
+	{
 		toc.version = 1;
+	}
 }
 
 

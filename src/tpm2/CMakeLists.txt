@@ -18,4 +18,9 @@ add_executable(tpm2
 
 
 target_include_directories(tpm2 PRIVATE ${SQLITE3_INCLUDE_DIRS} ${TINY_XML2_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
-target_link_libraries(tpm2 ${SQLITE3_LIBRARIES} ${TINY_XML2_LIBRARIES} ${ZLIB_LIBRARIES} stdc++fs)
+
+if (STATIC_TPM2)
+	target_link_libraries(tpm2 ${SQLITE3_STATIC_LIBRARIES} ${TINY_XML2_STATIC_LIBRARIES} ${ZLIB_STATIC_LIBRARIES} stdc++fs --static)
+else ()
+	target_link_libraries(tpm2 ${SQLITE3_LIBRARIES} ${TINY_XML2_LIBRARIES} ${ZLIB_LIBRARIES} stdc++fs)
+endif ()
