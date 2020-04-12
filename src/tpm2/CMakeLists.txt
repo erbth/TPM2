@@ -8,13 +8,18 @@ add_executable(tpm2
 	package_provider.cpp
 	directory_repository.cpp
 	stored_maintainer_scripts.cpp
+	pkg_tools.cpp
 	../common/package_constraints.cpp
 	../common/dependencies.cpp
 	../common/package_meta_data.cpp
 	../common/architecture.cpp
 	../common/version_number.cpp
 	../common/common_utilities.cpp
-	../common/transport_form.cpp)
+	../common/transport_form.cpp
+	../common/file_list.cpp
+	../common/safe_console_input.cpp
+	../common/message_digest.cpp
+	)
 
 
 target_include_directories(tpm2 PRIVATE ${SQLITE3_INCLUDE_DIRS} ${TINY_XML2_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})

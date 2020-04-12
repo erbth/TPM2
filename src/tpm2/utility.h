@@ -25,4 +25,6 @@ void run_script (std::shared_ptr<Parameters> params, ManagedBuffer<char>& script
 
 std::filesystem::path create_tmp_dir (std::shared_ptr<Parameters> params);
 
+std::string installation_reason_to_string (char reason);
+
 #endif /* __UTILITY_H */

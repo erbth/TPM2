@@ -298,8 +298,8 @@ void PackageDB::ensure_schema()
 						"pkg_name varchar,"
 						"pkg_architecture integer,"
 						"pkg_version varchar,"
-						"type integer,"
-						"digest varchar not null,"
+						"type integer not null,"
+						"digest blob not null,"
 						"primary key (path, pkg_name, pkg_architecture, pkg_version),"
 						"foreign key (pkg_name, pkg_architecture, pkg_version) "
 							"references packages (name, architecture, version) "
@@ -782,7 +782,7 @@ bool PackageDB::update_or_create_package (shared_ptr<PackageMetaData> mdata)
 }
 
 
-void PackageDB::update_state (std::shared_ptr<PackageMetaData> mdata)
+void PackageDB::update_state (shared_ptr<PackageMetaData> mdata)
 {
 	sqlite3_stmt *pStmt = nullptr;
 	const string& version_string = mdata->version.to_string();
@@ -830,7 +830,55 @@ void PackageDB::update_state (std::shared_ptr<PackageMetaData> mdata)
 }
 
 
-void PackageDB::set_dependencies (std::shared_ptr<PackageMetaData> mdata)
+void PackageDB::update_installation_reason (shared_ptr<PackageMetaData> mdata)
+{
+	sqlite3_stmt *pStmt = nullptr;
+	const string& version_string = mdata->version.to_string();
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"update packages set installation_reason = ?4 "
+				"where name = ?1 and architecture = ?2 and version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 4, mdata->installation_reason);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
+void PackageDB::set_dependencies (shared_ptr<PackageMetaData> mdata)
 {
 	sqlite3_stmt *pStmt = nullptr;
 	const string& version_string = mdata->version.to_string();
@@ -944,12 +992,102 @@ void PackageDB::set_dependencies (std::shared_ptr<PackageMetaData> mdata)
 }
 
 
+void PackageDB::set_files (shared_ptr<PackageMetaData> mdata, shared_ptr<FileList> files)
+{
+	sqlite3_stmt *pStmt = nullptr;
+	const string& version_string = mdata->version.to_string();
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"delete from files "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step  (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
+		for (const auto& file : *files)
+		{
+			err = sqlite3_prepare_v2 (pDb,
+					"insert into files "
+					"(path, pkg_name, pkg_architecture, pkg_version, type, digest) "
+					"values (?1, ?2, ?3, ?4, ?5, ?6);",
+					-1, &pStmt, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			/* Again, not sure if the path would have to survive into the
+			 * potential catch block. */
+			err = sqlite3_bind_text (pStmt, 1, file.path.c_str(), file.path.size(), SQLITE_TRANSIENT);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 2, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 3, mdata->architecture);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 4, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 5, file.type);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_blob (pStmt, 6, file.sha1_sum, 20, SQLITE_TRANSIENT);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_step (pStmt);
+			if (err != SQLITE_DONE)
+				throw sqlitedb_exception (err, pDb);
+
+			sqlite3_finalize (pStmt);
+			pStmt = nullptr;
+		}
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
 /********************************* Exceptions *********************************/
 PackageDBException::PackageDBException ()
 {
 }
 
-PackageDBException::PackageDBException (const std::string& msg)
+PackageDBException::PackageDBException (const string& msg)
 	: msg(msg)
 {
 }

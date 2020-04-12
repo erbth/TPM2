@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include "package_meta_data.h"
+#include "file_list.h"
 
 extern "C" {
 #include <zlib.h>
@@ -101,22 +102,6 @@ namespace TransportForm
 	};
 
 
-	struct FileRecord
-	{
-		/* Stored attributes */
-		uint8_t type;
-		uint32_t uid, gid;
-		uint16_t mode;
-		uint32_t size;
-		uint8_t sha1_sum[20];
-		std::string path;
-
-		/* Serialization */
-		size_t binary_size () const;
-		void to_binary (uint8_t *buf) const;
-	};
-
-
 	class TransportForm
 	{
 	private:
@@ -175,12 +160,16 @@ namespace TransportForm
 		std::shared_ptr<PackageMetaData> mdata;
 	};
 
-	/* @raises what rs raises and InvalidTocVersion,
+	/* @raises what rs raises and InvalidToc,
 	 *     invalid_package_meta_data_xml. */
 	ReadTransportForm read_transport_form (ReadStream& rs);
 
 
 	std::string filename_from_mdata (const PackageMetaData& mdata);
+
+
+	/* This will always return a valid pointer, maybe to an empty list. */
+	std::shared_ptr<FileList> read_file_list (ReadStream& rs, size_t size);
 
 
 	class InvalidToc : public std::exception

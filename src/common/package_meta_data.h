@@ -62,8 +62,6 @@ struct PackageMetaData
 	char installation_reason;
 	int state;
 
-	// FileList files;
-
 
 	/* Methods */
 	PackageMetaData(const std::string &name, const int architecture,

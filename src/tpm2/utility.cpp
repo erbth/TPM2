@@ -4,6 +4,7 @@
 #include <system_error>
 #include "utility.h"
 #include "tpm2_config.h"
+#include "package_meta_data.h"
 
 extern "C" {
 #include <sys/types.h>
@@ -100,4 +101,20 @@ fs::path create_tmp_dir (std::shared_ptr<Parameters> params)
 		fs::create_directory (dir);
 
 	return dir;
+}
+
+
+string installation_reason_to_string (char reason)
+{
+	switch (reason)
+	{
+		case INSTALLATION_REASON_AUTO:
+			return "auto";
+
+		case INSTALLATION_REASON_MANUAL:
+			return "manual";
+
+		default:
+			return "invalid";
+	}
 }

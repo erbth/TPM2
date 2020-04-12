@@ -3,13 +3,16 @@
  * High level installation, reinstallation and upgrading of packages */
 
 #include <cstdio>
+#include <iostream>
 #include <map>
-#include <regex>
 #include <optional>
+#include <regex>
+#include <sstream>
 #include "installation.h"
 #include "utility.h"
 #include "depres.h"
 #include "package_db.h"
+#include "safe_console_input.h"
 
 using namespace std;
 namespace pc = PackageConstraints;
@@ -176,28 +179,29 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 			return false;
 		}
 
+		string irs = installation_reason_to_string (cv->installation_reason);
+
 		printf ("    %d [label=\"", node_indeces[node.get()]);
 
 		if (!iv)
 		{
-			string irs;
-
-			switch (cv->installation_reason)
-			{
-				case INSTALLATION_REASON_AUTO:
-					irs = "auto";
-					break;
-
-				case INSTALLATION_REASON_MANUAL:
-					irs = "manual";
-					break;
-
-				default:
-					irs = "invalid";
-					break;
-			}
-
 			printf ("Missing_pkg (%s, %s, %s, %s)",
+					node->name.c_str(),
+					Architecture::to_string(node->architecture).c_str(),
+					irs.c_str(),
+					cv->version.to_string().c_str());
+		}
+		else if (*iv == cv->version)
+		{
+			printf ("Present_pkg (%s, %s, %s, %s)",
+					node->name.c_str(),
+					Architecture::to_string(node->architecture).c_str(),
+					irs.c_str(),
+					cv->version.to_string().c_str());
+		}
+		else
+		{
+			printf ("Wrong_pkg (%s, %s, %s, %s)",
 					node->name.c_str(),
 					Architecture::to_string(node->architecture).c_str(),
 					irs.c_str(),
@@ -307,6 +311,32 @@ bool install_packages(shared_ptr<Parameters> params)
 			if (!ll_unpack_package (params, pkgdb, ig_node->provided_package))
 				return false;
 		}
+		else
+		{
+			/* Potentially change installation reason */
+			if (ig_node->manual && ig_node->chosen_version->installation_reason
+					!= INSTALLATION_REASON_MANUAL)
+			{
+				if (!ll_change_installation_reason (
+							pkgdb,
+							ig_node->chosen_version,
+							INSTALLATION_REASON_MANUAL))
+				{
+					return false;
+				}
+			}
+			else if (!ig_node->manual && ig_node->chosen_version->installation_reason
+					== INSTALLATION_REASON_MANUAL)
+			{
+				if (!ll_change_installation_reason (
+							pkgdb,
+							ig_node->chosen_version,
+							INSTALLATION_REASON_AUTO))
+				{
+					return false;
+				}
+			}
+		}
 	}
 
 	/* Low-level configure the packages */
@@ -343,9 +373,54 @@ bool ll_unpack_package (
 	printf ("ll unpacking package %s@%s\n", mdata->name.c_str(),
 			Architecture::to_string (mdata->architecture).c_str());
 
-	/* Create DB tuple to make the operation transactional and store maintainer
+
+	/* Look for existing files and eventually adopt them */
+	printf ("  Looking for existing files ...");
+	fflush (stdout);
+
+	try
+	{
+		auto files = pp->get_files();
+
+		bool first = true;
+
+		for (const auto& file : *files)
+		{
+			stringstream ss;
+
+			if (!file.non_existent_or_matches (params->target, &ss))
+			{
+				if (first)
+				{
+					printf ("\n\n");
+					first = false;
+				}
+
+				printf ("File \"%s\" differs from the one in the package: %sAdopt it anyway? ",
+						file.path.c_str(), ss.str().c_str());
+
+				auto c = safe_query_user_input ("yN");
+
+				if (c != 'y')
+					throw gp_exception ("User aborted.");
+
+				printf ("Adopting \"%s\", which differs.\n", file.path.c_str());
+			}
+		}
+
+		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+	}
+	catch (exception& e)
+	{
+		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf ("%s\n", e.what());
+		return false;
+	}
+
+
+	/* Create DB tuples to make the operation transactional and store maintainer
 	 * scripts. */
-	printf ("  Creating db tuple and storing maintainer scripts ...");
+	printf ("  Creating db tuples and storing maintainer scripts ...");
 	fflush (stdout);
 
 	try
@@ -356,6 +431,7 @@ bool ll_unpack_package (
 
 		pkgdb.update_or_create_package (mdata);
 		pkgdb.set_dependencies (mdata);
+		pkgdb.set_files (mdata, pp->get_files());
 
 		StoredMaintainerScripts sms (params, mdata,
 				pp->get_preinst(),
@@ -461,6 +537,32 @@ bool ll_configure_package (
 
 		mdata->state = PKG_STATE_CONFIGURED;
 		pkgdb.update_state (mdata);
+
+		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+	}
+	catch (exception& e)
+	{
+		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf ("%s\n", e.what());
+		return false;
+	}
+
+	return true;
+}
+
+
+bool ll_change_installation_reason (
+		PackageDB& pkgdb,
+		shared_ptr<PackageMetaData> mdata,
+		char reason)
+{
+	try
+	{
+		printf ("  Changing installation reason ...");
+		fflush (stdout);
+
+		mdata->installation_reason = reason;
+		pkgdb.update_installation_reason (mdata);
 
 		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
 	}

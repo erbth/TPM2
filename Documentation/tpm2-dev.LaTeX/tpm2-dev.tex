@@ -167,7 +167,7 @@
 		\label{tab:the_database_schema_of_packagedb}
 	\end{table}
 	
-	It does not store file attributes at all. This deviates from the aforementioned ideal of a package manager which knows all files, but makes the implementation easier. At least for now I don't see why having the stricter version could bring a big benefit in my current and mid-term practice. If that arises it can easily be added due to versioned db schemata, anyway. The digest field contains a hash of the file's content. It may be prefixed with something like ''\texttt{sha512:}'' to indicate the used algorithm. If not prefix is present, the algorithm shall be sha1. It's not like super-safety but a considerable measure of integrity protection.
+	It does not store file attributes at all. This deviates from the aforementioned ideal of a package manager which knows all files, but makes the implementation easier. At least for now I don't see why having the stricter version could bring a big benefit in my current and mid-term practice. If that arises it can easily be added due to versioned db schemata, anyway. The digest field contains a hash of the file's content. It may (at some point in the future when I or someone else implements this) be prefixed with something like ''\texttt{sha512:}'' to indicate the used algorithm. If no prefix is present, the algorithm shall be sha1. It's not like super-safety but a considerable measure of integrity protection.
 	
 	
 	\subsection{Storing constraints}
@@ -476,6 +476,16 @@
 		\caption{Environment variables that influence \program{tpm2}}
 		\label{tab:environment_variables_for_tpm2}
 	\end{table}
+
+
+	\section{Installation reasons}
+	\label{sec:installation_reasons}
+	
+	There are two reasons to install a package: (a) because the user wanted it (manual) and (b) because another package depends on it (and the user did not explicitly install it, automatic). So, when shall a package be set to manual? -- Whenever the user specifies it on install. For upgrading there'll be \texttt{-{}-upgrade} ...
+
+
+
+
 
 
 	\section{Current state}

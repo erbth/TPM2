@@ -28,4 +28,10 @@ bool ll_configure_package (
 		std::shared_ptr<ProvidedPackage> pp,
 		std::shared_ptr<StoredMaintainerScripts> sms);
 
+
+bool ll_change_installation_reason (
+		PackageDB& pkgdb,
+		std::shared_ptr<PackageMetaData> mdata,
+		char reason);
+
 #endif /* __INSTALLATION_H */

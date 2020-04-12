@@ -104,15 +104,32 @@ ComputeInstallationGraphResult compute_installation_graph(
 	/* Add new packages */
 	for (auto& new_pkg : new_packages)
 	{
-		auto node = make_shared<InstallationGraphNode>(
-				new_pkg.first.first, new_pkg.first.second);
+		shared_ptr<InstallationGraphNode> node;
+
+		auto p = g.V.find (new_pkg.first);
+
+		bool was_new = false;
+
+		if (p != g.V.end())
+		{
+			node = p->second;
+		}
+		else
+		{
+			was_new = true;
+
+			node = make_shared<InstallationGraphNode>(
+					new_pkg.first.first, new_pkg.first.second);
+		}
 
 		node->manual = true;
 
 		if (new_pkg.second)
 			node->constraints.insert ({nullptr, new_pkg.second});
 
-		g.add_node (node);
+		if (was_new)
+			g.add_node (node);
+
 		active.insert (node.get());
 	}
 

@@ -4,6 +4,7 @@
 #include "transport_form.h"
 #include "architecture.h"
 #include "managed_buffer.h"
+#include "common_utilities.h"
 
 extern "C" {
 #include <endian.h>
@@ -170,25 +171,6 @@ TableOfContents TableOfContents::read_from_binary (ReadStream& rs)
 	}
 
 	return toc;
-}
-
-
-size_t FileRecord::binary_size() const
-{
-	return 1 + 4 + 4 + 2 + 4 + 20 + path.size() + 1;
-}
-
-
-void FileRecord::to_binary (uint8_t *buf) const
-{
-	*buf = type;
-	*((uint32_t*) (buf + 0x01)) = htole32 (uid);
-	*((uint32_t*) (buf + 0x05)) = htole32 (gid);
-	*((uint16_t*) (buf + 0x09)) = htole16 (mode);
-	*((uint32_t*) (buf + 0x0b)) = htole32 (size);
-	strncpy ((char*) buf + 0x0f, (char*) sha1_sum, 20);
-	strcpy ((char*) buf + 0x23, path.c_str());
-	*(buf + 0x23 + path.size()) = 0;
 }
 
 
@@ -364,13 +346,6 @@ int TransportForm::write (Writer& w)
 }
 
 
-string filename_from_mdata (const PackageMetaData& mdata)
-{
-	return mdata.name + "-" + mdata.version.to_string() + "_" +
-		Architecture::to_string (mdata.architecture) + ".tpm2";
-}
-
-
 ReadTransportForm read_transport_form (ReadStream& rs)
 {
 	ReadTransportForm rtf;
@@ -391,6 +366,62 @@ ReadTransportForm read_transport_form (ReadStream& rs)
 	 * only if the index is in the file. */
 
 	return rtf;
+}
+
+
+string filename_from_mdata (const PackageMetaData& mdata)
+{
+	return mdata.name + "-" + mdata.version.to_string() + "_" +
+		Architecture::to_string (mdata.architecture) + ".tpm2";
+}
+
+
+shared_ptr<FileList> read_file_list (ReadStream& rs, size_t size)
+{
+	auto fl = make_shared<FileList>();
+	DynamicBuffer<char> buf;
+	size_t buf_fill = 0;
+
+	size_t crec_size = 0;
+
+	/* File records are delimited by null characters in their paths. So we
+	 * have to read until you encounter such a null character. */
+	for (;;)
+	{
+		if (size > 0)
+		{
+			auto to_read = MIN(size, 4096);
+
+			buf.ensure_size (buf_fill + to_read);
+			rs.read (buf.buf + buf_fill, to_read);
+
+			buf_fill += to_read;
+			size -= to_read;
+		}
+
+		if (buf_fill < 0x24)
+			return fl;
+
+		for (;;)
+		{
+			crec_size = strnlen (buf.buf + 0x23, buf_fill - 0x23) + 0x24;
+
+			if (crec_size <= buf_fill)
+			{
+				FileRecord r;
+				FileRecord::from_binary ((uint8_t*) buf.buf, crec_size, r);
+				fl->add_file (move(r));
+
+				memmove (buf.buf, buf.buf + crec_size, buf_fill - crec_size);
+				buf_fill -= crec_size;
+			}
+			else
+			{
+				break;
+			}
+		}
+	}
+
 }
 
 

@@ -35,6 +35,8 @@ std::string convenient_readlink (const char *path);
  * symbolic links. */
 std::string simplify_path (const std::string& path);
 
+std::string sha1_to_string (const char sha1[]);
+
 
 /* An exception for general purposes, i.e. when things should not have happened
  * or to deliver a simple error message. */

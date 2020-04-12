@@ -16,6 +16,7 @@
 #include "repository.h"
 #include "transport_form.h"
 #include "managed_buffer.h"
+#include "file_list.h"
 
 
 class ProvidedPackage
@@ -26,6 +27,8 @@ private:
 	/* Referring to the original transport form */
 	TransportForm::TableOfContents toc;
 	std::shared_ptr<TransportForm::ReadStream> rs;
+
+	std::shared_ptr<FileList> files;
 
 	std::shared_ptr<ManagedBuffer<char>> preinst;
 	std::shared_ptr<ManagedBuffer<char>> configure;
@@ -43,6 +46,12 @@ public:
 
 	std::shared_ptr<PackageMetaData> get_mdata();
 
+	/* This will always return a valid pointer. If the package has no files, the
+	 * list is simply empty. */
+	std::shared_ptr<FileList> get_files();
+
+	/* These do only return something other than nullptr if the corresponding
+	 * maintainer script is present. */
 	std::shared_ptr<ManagedBuffer<char>> get_preinst();
 	std::shared_ptr<ManagedBuffer<char>> get_configure();
 	std::shared_ptr<ManagedBuffer<char>> get_unconfigure();

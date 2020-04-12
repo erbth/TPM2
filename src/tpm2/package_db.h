@@ -11,6 +11,7 @@
 #include <exception>
 #include "parameters.h"
 #include "package_meta_data.h"
+#include "file_list.h"
 
 
 class PackageDB
@@ -39,10 +40,15 @@ public:
 	bool update_or_create_package (std::shared_ptr<PackageMetaData> mdata);
 
 	void update_state (std::shared_ptr<PackageMetaData> mdata);
+	void update_installation_reason (std::shared_ptr<PackageMetaData> mdata);
 
 	/* Sets the pre-dependencies and dependencies to the values given in the
 	 * metadata object */
 	void set_dependencies (std::shared_ptr<PackageMetaData> mdata);
+
+	/* Neither parameter may be nullptr. The latter can, however, be an empty
+	 * list. */
+	void set_files (std::shared_ptr<PackageMetaData> mdata, std::shared_ptr<FileList> files);
 
 
 	void begin();

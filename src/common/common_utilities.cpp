@@ -117,6 +117,30 @@ string simplify_path (const string& path)
 }
 
 
+string sha1_to_string (const char sha1[])
+{
+	string s;
+	s.reserve (60);
+
+	for (int i = 0; i < 20; i++)
+	{
+		if (s.size() > 0)
+			s += ':';
+
+		char d1 = (sha1[i] >> 4) & 0xf;
+		char d2 = sha1[i] & 0xf;
+
+		d1 = d1 > 9 ? d1 - 10 + 'a' : d1 + '0';
+		d2 = d2 > 9 ? d2 - 10 + 'a' : d2 + '0';
+
+		s += d1;
+		s += d2;
+	}
+
+	return s;
+}
+
+
 gp_exception::gp_exception (const string& msg)
 	: msg(msg)
 {

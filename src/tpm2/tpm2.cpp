@@ -11,6 +11,7 @@
 #include "parameters.h"
 #include "package_db.h"
 #include "utility.h"
+#include "pkg_tools.h"
 
 extern "C" {
 #include <sys/types.h>
@@ -69,7 +70,7 @@ void print_help()
 "                          installed and are not required by other packages that\n"
 "                          are marked as manually installed\n\n"
 
-"  --list-installed        List all installed packages\n\n"
+"  --list-installed        List all installed packages and their states\n\n"
 
 "  --show-problems         Show all problems with the current installation\n"
 "                          (i.e. halfly installed packages after an interruption\n"
@@ -235,7 +236,18 @@ int _main(int argc, char** argv)
 			{
 				if (state.operation == state.SPECIFIED)
 				{
-					params->operation_packages.push_back(parameter);
+					if (
+							params->operation == OPERATION_INSTALL ||
+							params->operation == OPERATION_INSTALLATION_GRAPH
+					   )
+					{
+						params->operation_packages.push_back(parameter);
+					}
+					else
+					{
+						printf ("This operation does not accept packages as arguments.\n");
+						return 2;
+					}
 				}
 				else
 				{
@@ -271,6 +283,9 @@ int _main(int argc, char** argv)
 
 	case OPERATION_INSTALLATION_GRAPH:
 		return print_installation_graph(params) ? 0 : 1;
+
+	case OPERATION_LIST_INSTALLED:
+		return list_installed_packages(params) ? 0 : 1;
 
 	default:
 		printf ("Error: this operation is not yet implemented.\n");

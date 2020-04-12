@@ -15,6 +15,7 @@
 #include "file_wrapper.h"
 #include "transport_form.h"
 #include "message_digest.h"
+#include "file_list.h"
 
 extern "C" {
 #include <sys/types.h>
@@ -455,7 +456,7 @@ bool create_file_index (const fs::path& dir, DynamicBuffer<uint8_t>& dst, size_t
 			if (S_ISDIR(statbuf.st_mode))
 			{
 				/* Index a directory: in order traversal + move down into it. */
-				tf::FileRecord rec;
+				FileRecord rec;
 
 				rec.type = FILE_TYPE_DIRECTORY;
 				rec.uid = statbuf.st_uid;
@@ -485,7 +486,7 @@ bool create_file_index (const fs::path& dir, DynamicBuffer<uint8_t>& dst, size_t
 			}
 			else
 			{
-				tf::FileRecord rec;
+				FileRecord rec;
 
 				switch (statbuf.st_mode & S_IFMT)
 				{

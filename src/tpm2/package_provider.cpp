@@ -41,6 +41,32 @@ shared_ptr<PackageMetaData> ProvidedPackage::get_mdata()
 }
 
 
+shared_ptr<FileList> ProvidedPackage::get_files()
+{
+	if (!files)
+	{
+		for (const auto& sec : toc.sections)
+		{
+			if (sec.type == tf::SEC_TYPE_FILE_INDEX)
+			{
+				ensure_read_stream();
+
+				if (rs->tell () != sec.start)
+					rs->seek (sec.start);
+
+				files = tf::read_file_list (*rs, sec.size);
+				break;
+			}
+		}
+	}
+
+	if (!files)
+		files = make_shared<FileList>();
+
+	return files;
+}
+
+
 shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_preinst()
 {
 	if (!preinst)
@@ -154,6 +180,7 @@ bool ProvidedPackage::has_archive ()
 void ProvidedPackage::clear_buffers()
 {
 	rs = nullptr;
+	files = nullptr;
 	preinst = nullptr;
 	configure = nullptr;
 	unconfigure = nullptr;
