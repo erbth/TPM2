@@ -4,7 +4,6 @@
 #include <ios>
 #include <system_error>
 #include "file_list.h"
-#include "common_utilities.h"
 #include "message_digest.h"
 
 extern "C" {
@@ -74,7 +73,7 @@ bool FileRecord::operator< (const FileRecord& o) const
 }
 
 
-bool FileRecord::non_existent_or_matches (const std::string& root, std::ostream *out) const
+bool FileRecord::non_existent_or_matches (const string& root, ostream *out) const
 {
 	const auto& target_path = simplify_path (root + "/" + path);
 

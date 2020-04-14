@@ -1,12 +1,14 @@
 /** This file is part of the TSClient LEGACY Package Manager
  *
- * This module contains a file index. */
+ * This module contains a file list that may be used as index. */
 #ifndef __FILE_LIST_H
 #define __FILE_LIST_H
 
 #include <memory>
 #include <ostream>
 #include <set>
+#include <string>
+#include "common_utilities.h"
 #include "package_meta_data.h"
 
 

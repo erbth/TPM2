@@ -32,7 +32,7 @@ std::string convenient_readlink (const char *path);
 
 /* Simplify a path, that is remove all double slashes. Compared to libc's
  * readlpath this does not access the filesystem, but likewise not expand
- * symbolic links. */
+ * symbolic links. Trailing slashes are preserved. */
 std::string simplify_path (const std::string& path);
 
 std::string sha1_to_string (const char sha1[]);
