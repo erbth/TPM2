@@ -16,11 +16,11 @@ template<typename T> class FileTrieNode;
 template<typename T> class FileTrieTestAdaptor;
 
 
-/* N is typically FileTrieNode<T> or const FileTrieNode<T> */
 template<typename T>
 class FileTrieNodeHandle
 {
 	friend FileTrie<T>;
+	friend FileTrieTestAdaptor<T>;
 
 private:
 	FileTrieNode<T> *ptr;
@@ -29,6 +29,9 @@ private:
 	FileTrieNodeHandle (FileTrieNode<T> *ptr) : ptr(ptr) {}
 
 public:
+	FileTrieNodeHandle (const FileTrieNodeHandle& o) : ptr(o.ptr) {}
+	FileTrieNodeHandle (FileTrieNodeHandle&& o) : ptr(o.ptr) { o.ptr = nullptr; }
+
 	FileTrieNode<T>& operator*() const noexcept { return *ptr; }
 	FileTrieNode<T>* operator->() const noexcept { return ptr; }
 
@@ -49,7 +52,7 @@ private:
 	std::map<std::string, FileTrieNode<T>> children;
 
 	/* Trailing slash marks directory */
-	void insert_element (const std::string& _path, T data)
+	void insert_element (const std::string& _path)
 	{
 		/* Elliminate double slashes while keeping a potential trailing slash */
 		std::string path = simplify_path ('/' + _path);
@@ -104,13 +107,13 @@ private:
 				if (pos == end)
 				{
 					/* File or directory leaf */
-					auto j = c.insert (make_pair (sub, FileTrieNode<T> (current_node, true, sub, data)));
+					auto j = c.insert (make_pair (sub, FileTrieNode<T> (current_node, true, sub)));
 					current_node = &j.first->second;
 				}
 				else
 				{
 					/* Inner directory */
-					auto j = c.insert (make_pair (sub, FileTrieNode<T> (current_node, false, sub, data)));
+					auto j = c.insert (make_pair (sub, FileTrieNode<T> (current_node, false, sub)));
 					current_node = &j.first->second;
 				}
 			}
@@ -200,17 +203,17 @@ private:
 public:
 	/* Only inserts the specified element if it does not exist already. Even if
 	 * the existing one is of the other type. */
-	void insert_file (const std::string& path, T data)
+	void insert_file (const std::string& path)
 	{
 		if (path.size() == 0 || path.back() == '/')
 			return;
 
-		insert_element (path, data);
+		insert_element (path);
 	}
 
-	void insert_directory (const std::string& path, T data)
+	void insert_directory (const std::string& path)
 	{
-		insert_element (path + '/', data);
+		insert_element (path + '/');
 	}
 
 
@@ -260,8 +263,9 @@ public:
 
 
 			auto i = current_node ? current_node->children.find (sub) : children.find (sub);
+			auto children_end = current_node ? current_node->children.end() : children.end();
 
-			if (i)
+			if (i != children_end)
 				current_node = &i->second;
 			else
 				return false;
@@ -275,9 +279,9 @@ public:
 					auto parent = current_node->parent;
 
 					if (parent)
-						parent->children->erase (sub);
+						parent->children.erase (sub);
 					else
-						children->erase (sub);
+						children.erase (sub);
 
 					current_node = parent;
 
@@ -286,7 +290,7 @@ public:
 				else
 				{
 					i = current_node->children.find ("");
-					if (i)
+					if (i != children_end)
 					{
 						current_node->children.erase (i);
 						break;
@@ -307,7 +311,16 @@ public:
 			auto parent = current_node->parent;
 
 			if (current_node->children.size() == 0)
-				parent->children.erase (current_node->name);
+			{
+				if (parent)
+					parent->children.erase (current_node->name);
+				else
+					children.erase (current_node->name);
+			}
+			else
+			{
+				break;
+			}
 
 			current_node = parent;
 		}
@@ -330,8 +343,8 @@ private:
 
 	std::string name;
 
-	FileTrieNode (FileTrieNode<T> *parent, bool is_leaf, const std::string& name, T data)
-		: parent(parent), is_leaf(is_leaf), name(name), data(data)
+	FileTrieNode (FileTrieNode<T> *parent, bool is_leaf, const std::string& name)
+		: parent(parent), is_leaf(is_leaf), name(name), data{}
 	{
 	}
 
@@ -347,7 +360,17 @@ public:
 			p = "/" + p;
 
 		if (parent)
+		{
 			p = parent->get_path() + p;
+		}
+		else
+		{
+			/* The root directory would actually have the path "", but unix
+			 * software seems to agree that "/" (with a trailing slash) is
+			 * better in that case. */
+			if (p.size() == 0)
+				return "/";
+		}
 
 		return p;
 	}
@@ -381,6 +404,26 @@ public:
 	static std::string& get_name (FileTrieNode<T>& node)
 	{
 		return node.name;
+	}
+
+	static FileTrieNode<T> *get_node_pointer (FileTrieNodeHandle<T> &h)
+	{
+		return h.ptr;
+	}
+
+	static FileTrieNode<T> make_node ()
+	{
+		return FileTrieNode<T>(nullptr, true, "");
+	}
+
+	static FileTrieNodeHandle<T> make_handle ()
+	{
+		return FileTrieNodeHandle<T>();
+	}
+
+	static FileTrieNodeHandle<T> make_handle (FileTrieNode<T> *n)
+	{
+		return FileTrieNodeHandle<T>(n);
 	}
 };
 
