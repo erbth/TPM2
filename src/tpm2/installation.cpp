@@ -139,7 +139,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 	}
 
 	depres::ComputeInstallationGraphResult r =
-		depres::compute_installation_graph(params, installed_packages, new_packages);
+		depres::compute_installation_graph(params, installed_packages, pkgdb, new_packages);
 
 	if (r.status != depres::ComputeInstallationGraphResult::SUCCESS)
 	{
@@ -273,7 +273,7 @@ bool install_packages(shared_ptr<Parameters> params)
 	}
 
 	depres::ComputeInstallationGraphResult comp_igraph_res =
-		depres::compute_installation_graph (params, installed_packages, new_packages);
+		depres::compute_installation_graph (params, installed_packages, pkgdb, new_packages);
 
 	if (comp_igraph_res.status != depres::ComputeInstallationGraphResult::SUCCESS)
 	{
@@ -284,6 +284,28 @@ bool install_packages(shared_ptr<Parameters> params)
 	}
 
 	depres::InstallationGraph& igraph = comp_igraph_res.g;
+
+
+	/* Check if package versions need to be changed. This is not supported yet.
+	 * And depred does not remove installed packages yet, hence this check is
+	 * enough to make sure that only new versions will be installed. */
+	for (auto t : igraph.V)
+	{
+		auto ig_node = t.second;
+
+		if (ig_node->currently_installed_version &&
+				(*ig_node->currently_installed_version != ig_node->chosen_version->version))
+		{
+			fprintf (stderr, "Changing package versions is not supported yet.\n");
+			fprintf (stderr, "%s@%s would be changed from %s to %s.\n",
+					ig_node->name.c_str(),
+					Architecture::to_string (ig_node->architecture).c_str(),
+					ig_node->currently_installed_version->to_string().c_str(),
+					ig_node->chosen_version->version.to_string().c_str());
+
+			return false;
+		}
+	}
 
 
 	/* Determine an unpack and a configuration order */

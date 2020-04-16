@@ -12,6 +12,7 @@ namespace depres
 ComputeInstallationGraphResult compute_installation_graph(
 		shared_ptr<Parameters> params,
 		vector<shared_ptr<PackageMetaData>> installed_packages,
+		PackageDB& pkgdb,
 		vector<
 			pair<
 				pair<const string, int>,
@@ -21,6 +22,9 @@ ComputeInstallationGraphResult compute_installation_graph(
 {
 	/* The installation graph */
 	InstallationGraph g;
+
+	/* A file trie to efficiently test for conflicting packages */
+	FileTrie<set<PackageMetaData*>> file_trie;
 
 	/* A set of active packages */
 	set<InstallationGraphNode*> active;
@@ -38,6 +42,47 @@ ComputeInstallationGraphResult compute_installation_graph(
 		node->sms->clear_buffers();
 
 		g.add_node(node);
+
+		auto files = pkgdb.get_files (p);
+		for (auto& file : files)
+		{
+			FileTrieNodeHandle<set<PackageMetaData*>> h;
+			bool is_directory = false;
+
+			h = file_trie.find_directory (file.path);
+			if (h)
+				is_directory = true;
+			else
+				h = file_trie.find_file (file.path);
+
+			if ((file.type == FILE_TYPE_DIRECTORY && h && !is_directory) ||
+					(file.type != FILE_TYPE_DIRECTORY && h))
+			{
+				return ComputeInstallationGraphResult(
+						ComputeInstallationGraphResult::INVALID_CURRENT_CONFIG,
+						"Conflicting package " + p->name + "@" +
+						Architecture::to_string(p->architecture) +
+						" currently installed.");
+			}
+
+			if (!h)
+			{
+				if (file.type == FILE_TYPE_DIRECTORY)
+				{
+					file_trie.insert_directory (file.path);
+					h = file_trie.find_directory (file.path);
+				}
+				else
+				{
+					file_trie.insert_file (file.path);
+					h = file_trie.find_file (file.path);
+				}
+			}
+
+			h->data.insert (p.get());
+
+			node->file_node_handles.push_back (h);
+		}
 	}
 
 	/* Add dependencies of installed packages to the installation graph */
@@ -217,6 +262,18 @@ ComputeInstallationGraphResult compute_installation_graph(
 		/* A package can be uniquely identified by it's binary version number */
 		if (!old_mdata || old_mdata->version != mdata->version)
 		{
+			/* Remove old files */
+			for (auto& h : pnode->file_node_handles)
+			{
+				h->data.erase (pnode->chosen_version.get());
+
+				if (h->data.empty())
+					file_trie.remove_element (h->get_path());
+			}
+
+			pnode->file_node_handles.clear();
+
+
 			/* Remove old dependencies and constraints */
 			if (old_mdata)
 			{
@@ -235,6 +292,54 @@ ComputeInstallationGraphResult compute_installation_graph(
 				}
 
 				pnode->dependencies.clear();
+			}
+
+
+			/* Check if the new version would conflict. I do this after choosing
+			 * a version to make the choice independent from that; i.e. to not
+			 * install an older version just because it does not conflict
+			 * (usually not what the user wants and if so, she can specify this
+			 * manually).
+			 *
+			 * For now, abort when a conflicting package would be installed. */
+			for (auto& file : *provpkg->get_files ())
+			{
+				FileTrieNodeHandle<set<PackageMetaData*>> h;
+				bool is_directory = false;
+
+				h = file_trie.find_directory (file.path);
+				if (h)
+					is_directory = true;
+				else
+					h = file_trie.find_file (file.path);
+
+				if ((file.type == FILE_TYPE_DIRECTORY && h && !is_directory) ||
+						(file.type != FILE_TYPE_DIRECTORY && h))
+				{
+					return ComputeInstallationGraphResult (
+							ComputeInstallationGraphResult::NOT_FULFILLABLE,
+							"Package " + mdata->name + "@" +
+							Architecture::to_string (mdata->architecture) + ":" +
+							mdata->version.to_string() + " would conflict with other packages.");
+				}
+
+				if (!h)
+				{
+					if (file.type == FILE_TYPE_DIRECTORY)
+					{
+						file_trie.insert_directory (file.path);
+						h = file_trie.find_directory (file.path);
+					}
+					else
+					{
+						file_trie.insert_file (file.path);
+						h = file_trie.find_file (file.path);
+					}
+				}
+
+				h->data.insert (mdata.get());
+
+				pnode->file_node_handles.push_back (h);
 			}
 
 

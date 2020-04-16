@@ -16,6 +16,8 @@
 #include "package_constraints.h"
 #include "package_provider.h"
 #include "stored_maintainer_scripts.h"
+#include "file_trie.h"
+#include "package_db.h"
 
 
 namespace depres
@@ -27,6 +29,7 @@ namespace depres
 	ComputeInstallationGraphResult compute_installation_graph(
 			std::shared_ptr<Parameters> params,
 			std::vector<std::shared_ptr<PackageMetaData>> installed_packages,
+			PackageDB& pkgdb,
 			std::vector<
 				std::pair<
 					std::pair<const std::string, int>,
@@ -66,6 +69,12 @@ namespace depres
 
 		std::list<InstallationGraphNode*> dependencies;
 		std::set<InstallationGraphNode*> dependees;
+
+
+		/* A list of file trie nodes associated with the package for easier
+		 * removal (contains less storage than a list of filepaths and is faster
+		 * than traversing the file trie) . */
+		std::vector<FileTrieNodeHandle<std::set<PackageMetaData*>>> file_node_handles;
 
 
 		/* Private data to use by algorithms etc. Must not be relied on to be

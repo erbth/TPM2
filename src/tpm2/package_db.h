@@ -5,13 +5,26 @@
 #ifndef __PACKAGE_DB
 #define __PACKAGE_DB
 
+#include <exception>
+#include <list>
 #include <memory>
 #include <string>
 #include <sqlite3.h>
-#include <exception>
 #include "parameters.h"
 #include "package_meta_data.h"
 #include "file_list.h"
+
+
+struct PackageDBFileEntry
+{
+	char type;
+	std::string path;
+	std::string digest;
+
+	inline PackageDBFileEntry (char type, const std::string& path, const std::string& digest)
+		: type(type), path(path), digest(digest)
+	{ }
+};
 
 
 class PackageDB
@@ -49,6 +62,7 @@ public:
 	/* Neither parameter may be nullptr. The latter can, however, be an empty
 	 * list. */
 	void set_files (std::shared_ptr<PackageMetaData> mdata, std::shared_ptr<FileList> files);
+	std::list<PackageDBFileEntry> get_files (std::shared_ptr<PackageMetaData> mdata);
 
 
 	void begin();

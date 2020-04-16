@@ -387,7 +387,7 @@ BOOST_AUTO_TEST_CASE (test_handles)
 	auto node = FileTrieTestAdaptor<int>::make_node();
 
 	/* Two different constructors. */
-	auto he = FileTrieTestAdaptor<int>::make_handle();
+	FileTrieNodeHandle<int> he;
 	auto hc = FileTrieTestAdaptor<int>::make_handle(&node);
 
 	BOOST_TEST (FileTrieTestAdaptor<int>::get_node_pointer (he) == nullptr);
@@ -408,6 +408,24 @@ BOOST_AUTO_TEST_CASE (test_handles)
 
 	BOOST_TEST (FileTrieTestAdaptor<int>::get_node_pointer (he_c) == nullptr);
 	BOOST_TEST (FileTrieTestAdaptor<int>::get_node_pointer (hc_c) == nullptr);
+
+	/* Copy- and move assignment */
+	FileTrieNodeHandle<int> he_ca, hc_ca, he_ma, hc_ma;
+
+	he_ca = he;
+	hc_ca = hc;
+
+	BOOST_TEST (FileTrieTestAdaptor<int>::get_node_pointer (he_ca) == nullptr);
+	BOOST_TEST (FileTrieTestAdaptor<int>::get_node_pointer (hc_ca) == &node);
+
+	he_ma = move (he_ca);
+	hc_ma = move (hc_ca);
+
+	BOOST_TEST (FileTrieTestAdaptor<int>::get_node_pointer (he_ca) == nullptr);
+	BOOST_TEST (FileTrieTestAdaptor<int>::get_node_pointer (hc_ca) == nullptr);
+
+	BOOST_TEST (FileTrieTestAdaptor<int>::get_node_pointer (he_ma) == nullptr);
+	BOOST_TEST (FileTrieTestAdaptor<int>::get_node_pointer (hc_ma) == &node);
 
 	/* Operators * and -> */
 	node.data = 7;

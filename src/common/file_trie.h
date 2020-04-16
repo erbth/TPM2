@@ -25,12 +25,25 @@ class FileTrieNodeHandle
 private:
 	FileTrieNode<T> *ptr;
 
-	FileTrieNodeHandle () : ptr(nullptr) {}
 	FileTrieNodeHandle (FileTrieNode<T> *ptr) : ptr(ptr) {}
 
 public:
+	FileTrieNodeHandle () : ptr(nullptr) {}
 	FileTrieNodeHandle (const FileTrieNodeHandle& o) : ptr(o.ptr) {}
 	FileTrieNodeHandle (FileTrieNodeHandle&& o) : ptr(o.ptr) { o.ptr = nullptr; }
+
+	FileTrieNodeHandle<T>& operator=(const FileTrieNodeHandle<T>& o) noexcept
+	{
+		ptr = o.ptr;
+		return *this;
+	}
+
+	FileTrieNodeHandle<T>& operator=(FileTrieNodeHandle<T>&& o) noexcept
+	{
+		ptr = o.ptr;
+		o.ptr = nullptr;
+		return *this;
+	}
 
 	FileTrieNode<T>& operator*() const noexcept { return *ptr; }
 	FileTrieNode<T>* operator->() const noexcept { return ptr; }
@@ -414,11 +427,6 @@ public:
 	static FileTrieNode<T> make_node ()
 	{
 		return FileTrieNode<T>(nullptr, true, "");
-	}
-
-	static FileTrieNodeHandle<T> make_handle ()
-	{
-		return FileTrieNodeHandle<T>();
 	}
 
 	static FileTrieNodeHandle<T> make_handle (FileTrieNode<T> *n)

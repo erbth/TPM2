@@ -186,7 +186,7 @@ void PackageDB::ensure_schema()
 
 			/* Process this tuple */
 			if (sqlite3_column_count (pStmt) != 1)
-				throw PackageDBException ("Invalid column cound in SQLITE_MASTER");
+				throw PackageDBException ("Invalid column count in SQLITE_MASTER");
 
 			relations.push_back ((const char*) sqlite3_column_text (pStmt, 0));
 		}
@@ -204,7 +204,7 @@ void PackageDB::ensure_schema()
 	}
 
 
-	/* Is there a table named schema_version? Remember we're still an
+	/* Is there a table named schema_version? Remember we're still in a
 	 * transaction ... */
 	if (find (relations.cbegin(), relations.cend(),
 				"schema_version") != relations.cend())
@@ -1079,6 +1079,75 @@ void PackageDB::set_files (shared_ptr<PackageMetaData> mdata, shared_ptr<FileLis
 
 		throw;
 	}
+}
+
+
+list<PackageDBFileEntry> PackageDB::get_files (shared_ptr<PackageMetaData> mdata)
+{
+	list<PackageDBFileEntry> files;
+	sqlite3_stmt *pStmt = nullptr;
+
+	const std::string& version_string = mdata->version.to_string();
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"select path, type, digest from files "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+
+		for (;;)
+		{
+			err = sqlite3_step (pStmt);
+
+			if (err == SQLITE_DONE)
+			{
+				break;
+			}
+			else if (err != SQLITE_ROW)
+			{
+				throw sqlitedb_exception (err, pDb);
+			}
+			else
+			{
+				if (sqlite3_column_count (pStmt) != 3)
+					throw PackageDBException ("Invalid column count while readin files.");
+
+				files.emplace_back (
+						sqlite3_column_int (pStmt, 1),
+						(const char*) sqlite3_column_text (pStmt, 0),
+						(const char*) sqlite3_column_text (pStmt, 2));
+			}
+		}
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+
+	return files;
 }
 
 
