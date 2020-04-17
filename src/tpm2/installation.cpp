@@ -3,6 +3,7 @@
  * High level installation, reinstallation and upgrading of packages */
 
 #include <cstdio>
+#include <filesystem>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -16,6 +17,7 @@
 
 using namespace std;
 namespace pc = PackageConstraints;
+namespace fs = std::filesystem;
 
 
 struct parse_cmd_param_result
@@ -153,14 +155,12 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 	/* Print it. */
 	printf ("digraph Dependencies {\n");
 
-	map<depres::InstallationGraphNode*, int> node_indeces;
-
 	/* Assign each node an index */
 	int i = 0;
 
 	for (auto& p : r.g.V)
 	{
-		node_indeces[p.second.get()] = i++;
+		p.second->algo_priv = i++;
 	}
 
 
@@ -181,7 +181,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 
 		string irs = installation_reason_to_string (cv->installation_reason);
 
-		printf ("    %d [label=\"", node_indeces[node.get()]);
+		printf ("    %d [label=\"", (int) node->algo_priv);
 
 		if (!iv)
 		{
@@ -214,13 +214,13 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 		for (auto d : node->pre_dependencies)
 		{
 			printf ("    %d -> %d [style=dotted];\n",
-					node_indeces[node.get()], node_indeces[d]);
+					(int) node->algo_priv, (int) d->algo_priv);
 		}
 
 		for (auto d : node->dependencies)
 		{
 			printf ("    %d -> %d;\n",
-					node_indeces[node.get()], node_indeces[d]);
+					(int) node->algo_priv, (int) d->algo_priv);
 		}
 	}
 
@@ -430,11 +430,11 @@ bool ll_unpack_package (
 			}
 		}
 
-		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
-		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
 		printf ("%s\n", e.what());
 		return false;
 	}
@@ -465,12 +465,12 @@ bool ll_unpack_package (
 
 		pkgdb.commit();
 
-		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
 		pkgdb.rollback();
-		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
 		printf ("%s\n", e.what());
 		return false;
 	}
@@ -494,11 +494,11 @@ bool ll_unpack_package (
 		mdata->state = PKG_STATE_UNPACK_BEGIN;
 		pkgdb.update_state (mdata);
 
-		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
-		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
 		printf ("%s\n", e.what());
 		return false;
 	}
@@ -516,11 +516,11 @@ bool ll_unpack_package (
 		mdata->state = PKG_STATE_CONFIGURE_BEGIN;
 		pkgdb.update_state (mdata);
 
-		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
-		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
 		printf ("%s\n", e.what());
 		return false;
 	}
@@ -560,11 +560,11 @@ bool ll_configure_package (
 		mdata->state = PKG_STATE_CONFIGURED;
 		pkgdb.update_state (mdata);
 
-		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
-		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
 		printf ("%s\n", e.what());
 		return false;
 	}
@@ -586,11 +586,391 @@ bool ll_change_installation_reason (
 		mdata->installation_reason = reason;
 		pkgdb.update_installation_reason (mdata);
 
-		printf (COLOR_GREEN " OK\n" COLOR_NORMAL);
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
-		printf (COLOR_RED " failed\n" COLOR_NORMAL);
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
+		printf ("%s\n", e.what());
+		return false;
+	}
+
+	return true;
+}
+
+
+/***************************** Removing packages ******************************/
+bool print_removal_graph (shared_ptr<Parameters> params)
+{
+	print_target (params, true);
+	PackageDB pkgdb (params);
+
+	/* Interpret the given package specifications */
+	set<pair<string, int>> pkg_ids;
+
+	for (const auto& pkg : params->operation_packages)
+	{
+		auto res = parse_cmd_param (*params, pkg);
+		if (!res.success)
+		{
+			fprintf (stderr, "Unknown package description: %s (%s)\n",
+					res.pkg.c_str(), res.err.c_str());
+			return false;
+		}
+
+		pkg_ids.emplace (make_pair(move(res.name), res.arch));
+	}
+
+	/* Build the removal graph */
+	depres::RemovalGraphBranch g = depres::build_removal_graph (pkgdb);
+
+	/* If any packages are specified, reduce it to the branch to remove */
+	if (!pkg_ids.empty())
+		depres::reduce_to_branch_to_remove (g, pkg_ids);
+
+	/* Print the removal graph */
+	/* First, enumerate all nodes. */
+	int i = 0;
+
+	for (auto node : g.V)
+		node->algo_priv = i++;
+
+	printf ("digraph \"Removal Graph\" {\n");
+
+	for (auto node : g.V)
+	{
+		printf ("    %d [label=\"(%s, %s)\"];\n",
+				(int) node->algo_priv,
+				node->pkg->name.c_str(),
+				Architecture::to_string (node->pkg->architecture).c_str());
+
+		/* Pre-provided packages */
+		for (auto& p : node->pre_provided)
+		{
+			printf ("    %d -> %d [style=dotted];\n",
+					(int) node->algo_priv, (int) p->algo_priv);
+		}
+
+		/* Provided packages */
+		for (auto& p : node->provided)
+		{
+			printf ("    %d -> %d;\n",
+					(int) node->algo_priv, (int) p->algo_priv);
+		}
+	}
+
+	printf ("}\n");
+
+	return true;
+}
+
+
+bool remove_packages (std::shared_ptr<Parameters> params)
+{
+	print_target (params, false);
+	PackageDB pkgdb (params);
+
+	/* Interpret the given package specifications */
+	set<pair<string, int>> pkg_ids;
+
+	for (const auto& pkg : params->operation_packages)
+	{
+		auto res = parse_cmd_param (*params, pkg);
+		if (!res.success)
+		{
+			fprintf (stderr, "Unknown package description: %s (%s)\n",
+					res.pkg.c_str(), res.err.c_str());
+			return false;
+		}
+
+		pkg_ids.emplace (make_pair(move(res.name), res.arch));
+	}
+
+	/* Build the removal graph */
+	depres::RemovalGraphBranch g = depres::build_removal_graph (pkgdb);
+	depres::reduce_to_branch_to_remove (g, pkg_ids);
+
+	/* Compute an unconfigure and rmfiles order */
+	vector<depres::RemovalGraphNode*> unconfigure_order = depres::serialize_rgraph (g, false);
+	vector<depres::RemovalGraphNode*> rmfiles_order = depres::serialize_rgraph (g, true);
+
+	/* Check that all packages to be touched are in an accepted state. This is
+	 * primarily for a good user experience. */
+	for (auto rg_node : unconfigure_order)
+	{
+		int state = rg_node->pkg->state;
+
+		if (state != PKG_STATE_CONFIGURED &&
+				state != PKG_STATE_UNCONFIGURE_BEGIN &&
+				state != PKG_STATE_RM_FILES_BEGIN &&
+				state != PKG_STATE_POSTRM_BEGIN)
+		{
+			fprintf (stderr, "Package %s@%s is in a state that is not supported for removal.\n",
+					rg_node->pkg->name.c_str(),
+					Architecture::to_string (rg_node->pkg->architecture).c_str());
+
+			return false;
+		}
+	}
+
+	/* Load stored maintainer scripts for involved packages */
+	map<std::shared_ptr<PackageMetaData>,StoredMaintainerScripts> sms_map;
+
+	for (auto rg_node : unconfigure_order)
+	{
+	 	sms_map.emplace (make_pair (
+					rg_node->pkg,
+					StoredMaintainerScripts (params, rg_node->pkg)));
+	}
+
+	printf ("Unconfiguring packages.\n");
+	for (auto rg_node : unconfigure_order)
+	{
+		if (rg_node->pkg->state == PKG_STATE_CONFIGURED ||
+				rg_node->pkg->state == PKG_STATE_UNCONFIGURE_BEGIN)
+		{
+			if (!params->target_is_native())
+			{
+				fprintf (stderr, "Cannot unconfigure package %s@%s because the "
+						"target system is not native.\n",
+						rg_node->pkg->name.c_str(),
+						Architecture::to_string (rg_node->pkg->architecture).c_str());
+
+				return false;
+			}
+
+			printf (" unconfiguring package %s@%s\n",
+					rg_node->pkg->name.c_str(),
+					Architecture::to_string (rg_node->pkg->architecture).c_str());
+
+			if (!ll_unconfigure_package (params, pkgdb, rg_node->pkg,
+					sms_map.find(rg_node->pkg)->second))
+			{
+				return false;
+			}
+		}
+	}
+
+	printf ("Removing packages.\n");
+	for (auto rg_node : rmfiles_order)
+	{
+		printf (" removing package %s@%s\n",
+				rg_node->pkg->name.c_str(),
+				Architecture::to_string (rg_node->pkg->architecture).c_str());
+
+		if (rg_node->pkg->state == PKG_STATE_RM_FILES_BEGIN)
+		{
+			if (!ll_rm_files (params, pkgdb, rg_node->pkg))
+				return false;
+		}
+
+		if (rg_node->pkg->state == PKG_STATE_POSTRM_BEGIN)
+		{
+			if (!ll_run_postrm (params, pkgdb, rg_node->pkg,
+						sms_map.find(rg_node->pkg)->second))
+			{
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+
+bool ll_unconfigure_package (
+		shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		shared_ptr<PackageMetaData> mdata,
+		StoredMaintainerScripts& sms)
+{
+	if (mdata->state != PKG_STATE_CONFIGURED && mdata->state != PKG_STATE_UNCONFIGURE_BEGIN)
+		throw gp_exception ("ll_unconfigure_package called with pkg in inaccepted state.");
+
+	try
+	{
+		printf ("  Marking unconfiguration in db ...");
+		fflush (stdout);
+
+		mdata->state = PKG_STATE_UNCONFIGURE_BEGIN;
+		pkgdb.update_state (mdata);
+
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+	}
+	catch (exception& e)
+	{
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
+		printf ("%s\n", e.what());
+		return false;
+	}
+
+
+	try
+	{
+		printf ("  Running unconfigure script ...");
+		fflush (stdout);
+
+
+		auto unconfigure = sms.get_unconfigure();
+		if (unconfigure)
+			run_script (params, *unconfigure);
+
+
+		mdata->state = PKG_STATE_RM_FILES_BEGIN;
+		pkgdb.update_state (mdata);
+
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+	}
+	catch (exception& e)
+	{
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
+		printf ("%s\n", e.what());
+		return false;
+	}
+
+	return true;
+}
+
+
+bool ll_rm_files (
+		shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		shared_ptr<PackageMetaData> mdata)
+{
+	if (mdata->state != PKG_STATE_RM_FILES_BEGIN)
+		throw gp_exception ("ll_rm_files called with pkg in inacceptable state.");
+
+	try
+	{
+		printf ("  Removing files ...");
+		fflush (stdout);
+
+
+		list<PackageDBFileEntry> files = pkgdb.get_files (mdata);
+		list<PackageDBFileEntry> directories;
+
+		auto iter = files.begin();
+		while (iter != files.end())
+		{
+			if (iter->type == FILE_TYPE_DIRECTORY)
+				directories.splice (directories.end(), files, iter++);
+			else
+				++iter;
+		}
+
+		/* Makes sure that subdirectories come first. That is, the longer paths
+		 * must come first and hence be considered 'less'. */
+		directories.sort (
+				[](const PackageDBFileEntry& a, const PackageDBFileEntry& b) {
+					return a.path.size() > b.path.size();
+				});
+
+		/* Remove files */
+		for (auto& f : files)
+		{
+			auto s = fs::symlink_status (f.path);
+
+			if (fs::exists (s))
+			{
+				/* Remove any type of file except directories, cause such a
+				 * mismatch is (1) strange and (2) may lead to bigger data
+				 * losses ... */
+				if (!is_directory (s))
+				{
+					fs::remove (f.path);
+				}
+				else
+				{
+					throw gp_exception ("File \"" + f.path +
+							"\" to be removed is a directory though it should not be one.");
+				}
+			}
+		}
+
+		/* Remove directories */
+		for (auto& d : directories)
+		{
+			auto s = fs::symlink_status (d.path);
+
+			if (fs::exists (s))
+			{
+				if (fs::is_directory (s))
+				{
+					if (directory_is_empty (d.path))
+						fs::remove (d.path);
+				}
+				else
+				{
+					throw gp_exception ("File \"" + d.path +
+							"\" to be removed is not a directory while it should be one.");
+				}
+			}
+		}
+
+
+		mdata->state = PKG_STATE_POSTRM_BEGIN;
+		pkgdb.update_state (mdata);
+
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+	}
+	catch (exception& e)
+	{
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
+		printf ("%s\n", e.what());
+		return false;
+	}
+
+	return true;
+}
+
+
+bool ll_run_postrm (
+		shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		shared_ptr<PackageMetaData> mdata,
+		StoredMaintainerScripts& sms)
+{
+	if (mdata->state != PKG_STATE_POSTRM_BEGIN)
+		throw gp_exception ("ll_run_postrm called with pkg in inacceptable state.");
+
+	try
+	{
+		printf ("  Running postrm script ...");
+		fflush (stdout);
+
+
+		auto postrm = sms.get_postrm();
+		if (postrm)
+			run_script (params, *postrm);
+
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+	}
+	catch (exception& e)
+	{
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
+		printf ("%s\n", e.what());
+		return false;
+	}
+
+
+	try
+	{
+		printf ("  Removing db tuples and stored maintainer scripts ...");
+		fflush (stdout);
+
+		pkgdb.begin();
+
+		StoredMaintainerScripts::delete_archive (params, mdata);
+		pkgdb.delete_package (mdata);
+
+		pkgdb.commit();
+
+		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+	}
+	catch (exception& e)
+	{
+		pkgdb.rollback();
+		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
 		printf ("%s\n", e.what());
 		return false;
 	}

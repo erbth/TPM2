@@ -66,6 +66,14 @@ StoredMaintainerScripts::StoredMaintainerScripts (
 
 fs::path StoredMaintainerScripts::get_path () const
 {
+	return get_path (params, mdata);
+}
+
+
+fs::path StoredMaintainerScripts::get_path (
+		const shared_ptr<Parameters> params,
+		const shared_ptr<PackageMetaData> mdata)
+{
 	return simplify_path (params->target + "/var/lib/tpm/" + mdata->name + "-" +
 			mdata->version.to_string() + "_" +
 			Architecture::to_string (mdata->architecture) + ".tpm2sms");
@@ -260,4 +268,15 @@ void StoredMaintainerScripts::write () const
 			}
 		}
 	}
+}
+
+
+void StoredMaintainerScripts::delete_archive (
+		shared_ptr<Parameters> params,
+		shared_ptr<PackageMetaData> mdata)
+{
+	fs::path p = get_path (params, mdata);
+
+	if (fs::is_regular_file (p))
+		fs::remove (p);
 }

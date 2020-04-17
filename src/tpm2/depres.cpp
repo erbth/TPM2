@@ -436,11 +436,8 @@ void InstallationGraph::add_node(shared_ptr<InstallationGraphNode> n)
 }
 
 
-/* To serialize an installation graph.
- *
- * If @param pre_deps is set, pre-dependencies are used instead of dependencies.
- */
-void visit (contracted_node H[], list<InstallationGraphNode*>& serialized, int v)
+/* To serialize an installation graph. */
+void visit (contracted_ig_node H[], list<InstallationGraphNode*>& serialized, int v)
 {
 	/* There are a more sophisticated approaches to installing one SCC ...
 	 */
@@ -456,6 +453,8 @@ void visit (contracted_node H[], list<InstallationGraphNode*>& serialized, int v
 	}
 }
 
+/* If @param pre_deps is set, pre-dependencies are used instead of dependencies.
+ * */
 list<InstallationGraphNode*> serialize_igraph (
 		const InstallationGraph& igraph, bool pre_deps)
 {
@@ -468,22 +467,24 @@ list<InstallationGraphNode*> serialize_igraph (
 
 	for (int i = 0; i < cnt_nodes; i++)
 	{
-		nodes[i].igraph_node = iter->second.get();
-		nodes[i].igraph_node->algo_priv = i;
+		nodes[i].data = (void*) iter->second.get();
+		iter->second->algo_priv = i;
 
 		iter++;
 	}
 
 	for (int i = 0; i < cnt_nodes; i++)
 	{
+		auto ig_node = (InstallationGraphNode*) nodes[i].data;
+
 		if (pre_deps)
 		{
-			for (InstallationGraphNode* dep : nodes[i].igraph_node->pre_dependencies)
+			for (InstallationGraphNode* dep : ig_node->pre_dependencies)
 				nodes[i].children.push_back (dep->algo_priv);
 		}
 		else
 		{
-			for (InstallationGraphNode* dep : nodes[i].igraph_node->dependencies)
+			for (InstallationGraphNode* dep : ig_node->dependencies)
 				nodes[i].children.push_back (dep->algo_priv);
 		}
 	}
@@ -496,13 +497,13 @@ list<InstallationGraphNode*> serialize_igraph (
 	/* Construct the graph with the original graph's SCCs contracted and
 	 * traverse it in such a way that a node is output only after all its
 	 * ancestors are visited. */
-	unique_ptr<contracted_node[]> H = unique_ptr<contracted_node[]> (new contracted_node[count_sccs]);
+	unique_ptr<contracted_ig_node[]> H = unique_ptr<contracted_ig_node[]> (new contracted_ig_node[count_sccs]);
 
 	/* It's important to transpose the graph here to do the traversal along
 	 * edges in forward direction. */
 	for (int v = 0; v < cnt_nodes; v++)
 	{
-		H[nodes[v].SCC].original_nodes.push_back (nodes[v].igraph_node);
+		H[nodes[v].SCC].original_nodes.push_back ((InstallationGraphNode*) nodes[v].data);
 
 		for (int w : nodes[v].children)
 		{
@@ -596,5 +597,210 @@ int find_scc (int cnt_nodes, scc_node nodes[])
 	return j;
 }
 
+
+RemovalGraphBranch build_removal_graph (PackageDB& pkgdb)
+{
+	RemovalGraphBranch g;
+
+	auto all_pkgs = pkgdb.get_packages_in_state (ALL_PKG_STATES);
+
+	/* A temporary map for to resolve dependency descriptions to installed
+	 * packages. */
+	map<pair<string, int>,std::shared_ptr<RemovalGraphNode>> id_to_node;
+
+	/* Create nodes */
+	for (auto pkg : all_pkgs)
+	{
+		auto node = make_shared<RemovalGraphNode>(pkg);
+
+		g.V.push_back (node);
+
+		id_to_node.insert (make_pair (
+					make_pair (pkg->name, pkg->architecture),
+					node));
+	}
+
+	/* Add dependencies and pre-dependencies */
+	for (auto node : g.V)
+	{
+		auto pkg = node->pkg;
+
+		for (auto& dep : pkg->pre_dependencies)
+		{
+			auto i = id_to_node.find (dep.identifier);
+			if (i != id_to_node.end())
+			{
+				i->second->pre_provided.push_back (node.get());
+			}
+			else
+			{
+				/* This could be a normal situation after an aborted removal
+				 * operation. But I don't want to have the user (me) uninformed
+				 * yet as I don't trust my code to build the graph right. */
+				fprintf (stderr,
+						"INFO: Installed package %s@%s's pre-dependency %s@%s is not met.\n",
+						pkg->name.c_str(),
+						Architecture::to_string (pkg->architecture).c_str(),
+						dep.identifier.first.c_str(),
+						Architecture::to_string (dep.identifier.second).c_str());
+			}
+		}
+
+		for (auto& dep : pkg->dependencies)
+		{
+			auto i = id_to_node.find (dep.identifier);
+			if (i != id_to_node.end())
+			{
+				i->second->provided.push_back (node.get());
+			}
+			else
+			{
+				/* Same as above */
+				fprintf (stderr,
+						"INFO: Installed package %s@%s's dependency %s@%s is not met.\n",
+						pkg->name.c_str(),
+						Architecture::to_string (pkg->architecture).c_str(),
+						dep.identifier.first.c_str(),
+						Architecture::to_string (dep.identifier.second).c_str());
+			}
+		}
+	}
+
+	return g;
+}
+
+
+void rtbtr_mark_node (RemovalGraphNode *node)
+{
+	if (node->algo_priv == 0)
+	{
+		node->algo_priv = 1;
+
+		for (auto p : node->pre_provided)
+			rtbtr_mark_node (p);
+
+		for (auto p : node->provided)
+			rtbtr_mark_node (p);
+	}
+}
+
+void reduce_to_branch_to_remove (RemovalGraphBranch& branch, set<pair<string,int>>& pkg_ids)
+{
+	/* Clear all package's marks */
+	for (auto node : branch.V)
+		node->algo_priv = 0;
+
+	/* Mark packages to remove */
+	for (auto node : branch.V)
+	{
+		if (pkg_ids.find (make_pair (node->pkg->name, node->pkg->architecture))
+				!= pkg_ids.end())
+		{
+			rtbtr_mark_node (node.get());
+		}
+	}
+
+	/* Remove packages. No references need to be removed as all outgoing edges
+	 * lead to targets that need to be removed, too, and are hence still in the
+	 * graph. */
+	auto i = branch.V.begin();
+
+	while (i != branch.V.end())
+	{
+		auto next = i;
+
+		/* Must be done before i is invalidated. */
+		next++;
+
+		if ((*i)->algo_priv == 0)
+			branch.V.erase (i);
+
+		i = next;
+	}
+}
+
+
+/* To serialize a removal graph */
+void visit (contracted_rg_node H[], vector<RemovalGraphNode*>& serialized, int v)
+{
+	/* There are a more sophisticated approaches for removing one SCC ...
+	 */
+	for (RemovalGraphNode *rg_node : H[v].original_nodes)
+		serialized.push_back (rg_node);
+
+	for (int w : H[v].children)
+	{
+		H[w].unvisited_parents.erase (v);
+		
+		if (H[w].unvisited_parents.size() == 0)
+			visit (H, serialized, w);
+	}
+}
+
+
+vector<RemovalGraphNode*> serialize_rgraph (RemovalGraphBranch& branch, bool pre_deps)
+{
+	/* Find SCCs. Large memory should be on the heap. */
+	int cnt_nodes = branch.V.size();
+	unique_ptr<scc_node[]> nodes = unique_ptr<scc_node[]> (new scc_node[cnt_nodes]);
+
+	auto iter = branch.V.begin();
+
+	for (int i = 0; i < cnt_nodes; i++)
+	{
+		nodes[i].data = (void*) iter->get();
+		(*iter)->algo_priv = i;
+
+		iter++;
+	}
+
+	for (auto rg_node : branch.V)
+	{
+		if (pre_deps)
+		{
+			for (auto p : rg_node->pre_provided)
+				nodes[rg_node->algo_priv].children.push_back (p->algo_priv);
+		}
+		else
+		{
+			for (auto p : rg_node->provided)
+				nodes[rg_node->algo_priv].children.push_back (p->algo_priv);
+		}
+	}
+
+	/* Run Tarjan's algorithm */
+	int cnt_sccs = find_scc (cnt_nodes, nodes.get());
+
+	/* Construct the transposed contracted graph. It's important to transpose it
+	 * such that traversing a forward edge goes to a package that can be removed
+	 * next. */
+	unique_ptr<contracted_rg_node[]> H = unique_ptr<contracted_rg_node[]> (new contracted_rg_node[cnt_sccs]);
+
+	for (int v = 0; v < cnt_nodes; v++)
+	{
+		H[nodes[v].SCC].original_nodes.push_back ((RemovalGraphNode*) nodes[v].data);
+
+		for (int u : nodes[v].children)
+		{
+			if (nodes[v].SCC != nodes[u].SCC)
+			{
+				H[nodes[u].SCC].children.insert(nodes[v].SCC);
+				H[nodes[v].SCC].unvisited_parents.insert (nodes[u].SCC);
+				H[nodes[v].SCC].has_parent = true;
+			}
+		}
+	}
+
+	/* Traverse the contracted graph */
+	vector<RemovalGraphNode*> serialized;
+
+	for (int v = 0; v < cnt_sccs; v++)
+	{
+		if (!H[v].has_parent)
+			visit (H.get(), serialized, v);
+	}
+
+	return serialized;
+}
 
 }

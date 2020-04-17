@@ -141,6 +141,18 @@ string sha1_to_string (const char sha1[])
 }
 
 
+bool directory_is_empty (const std::string& path)
+{
+	for (auto i : fs::directory_iterator (path, fs::directory_options::none))
+	{
+		if (i.path() != "." && i.path() != "..")
+			return false;
+	}
+
+	return true;
+}
+
+
 gp_exception::gp_exception (const string& msg)
 	: msg(msg)
 {

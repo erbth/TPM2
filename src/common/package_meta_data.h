@@ -25,6 +25,9 @@
 #define PKG_STATE_UNPACK_BEGIN			3
 #define PKG_STATE_CONFIGURE_BEGIN		4
 #define PKG_STATE_CONFIGURED			5
+#define PKG_STATE_UNCONFIGURE_BEGIN		6
+#define PKG_STATE_RM_FILES_BEGIN		7
+#define PKG_STATE_POSTRM_BEGIN			8
 
 /* Only for selecting packages */
 #define ALL_PKG_STATES					1000

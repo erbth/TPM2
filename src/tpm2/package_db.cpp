@@ -1151,6 +1151,138 @@ list<PackageDBFileEntry> PackageDB::get_files (shared_ptr<PackageMetaData> mdata
 }
 
 
+void PackageDB::delete_package (shared_ptr<PackageMetaData> mdata)
+{
+	sqlite3_stmt *pStmt = nullptr;
+	const string& version_string = mdata->version.to_string();
+
+	try
+	{
+		/* Delete files */
+		auto err = sqlite3_prepare_v2 (pDb,
+				"delete from files "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
+		/* Delete depenencies */
+		err = sqlite3_prepare_v2 (pDb,
+				"delete from dependencies "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
+		/* Delete pre-dependencies */
+		err = sqlite3_prepare_v2 (pDb,
+				"delete from pre_dependencies "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
+		/* Finally delete the package's main tuple. */
+		err = sqlite3_prepare_v2 (pDb,
+				"delete from packages "
+				"where name = ?1 and architecture = ?2 and version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
 /********************************* Exceptions *********************************/
 PackageDBException::PackageDBException ()
 {

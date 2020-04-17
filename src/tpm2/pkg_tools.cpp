@@ -28,6 +28,15 @@ string pkg_state_to_string (int state)
 		case PKG_STATE_CONFIGURED:
 			return "configured";
 
+		case PKG_STATE_UNCONFIGURE_BEGIN:
+			return "unconfigure_begin";
+
+		case PKG_STATE_RM_FILES_BEGIN:
+			return "rm_files_begin";
+
+		case PKG_STATE_POSTRM_BEGIN:
+			return "postrm_begin";
+
 		default:
 			return "???";
 	};

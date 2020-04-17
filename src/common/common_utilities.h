@@ -37,6 +37,11 @@ std::string simplify_path (const std::string& path);
 
 std::string sha1_to_string (const char sha1[]);
 
+/* Does not follow symlinks. If the path does not refer to a directory, the
+ * bahavior is unspecified. The function does, what the
+ * std::filesystem::directory_iterator does then ... */
+bool directory_is_empty (const std::string& path);
+
 
 /* An exception for general purposes, i.e. when things should not have happened
  * or to deliver a simple error message. */

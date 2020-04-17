@@ -66,6 +66,12 @@ void print_help()
 "  --remove                Remove specified packages and their config files if\n"
 "                          they were not modified\n\n"
 
+"  --removal_graph         Prints the entire removal graph, which determines the\n"
+"                          packages that will be removed when a particular one is\n"
+"                          requested to be removed and in which order, if no\n"
+"                          package is specified. If one is specified this prints\n"
+"                          the particular branch that will be removed.\n\n"
+
 "  --remove-unneeded       Remove all packages that were marked as automatically\n"
 "                          installed and are not required by other packages that\n"
 "                          are marked as manually installed\n\n"
@@ -179,6 +185,16 @@ int _main(int argc, char** argv)
 				params->operation = OPERATION_SHOW_VERSION;
 				state.operation = state.SPECIFIED;
 			}
+			else if (option == "remove")
+			{
+				params->operation = OPERATION_REMOVE;
+				state.operation = state.SPECIFIED;
+			}
+			else if (option == "removal-graph")
+			{
+				params->operation = OPERATION_REMOVAL_GRAPH;
+				state.operation = state.SPECIFIED;
+			}
 			else if (option == "remove-unneeded")
 			{
 				params->operation = OPERATION_REMOVE_UNNEEDED;
@@ -238,7 +254,9 @@ int _main(int argc, char** argv)
 				{
 					if (
 							params->operation == OPERATION_INSTALL ||
-							params->operation == OPERATION_INSTALLATION_GRAPH
+							params->operation == OPERATION_INSTALLATION_GRAPH ||
+							params->operation == OPERATION_REMOVE ||
+							params->operation == OPERATION_REMOVAL_GRAPH
 					   )
 					{
 						params->operation_packages.push_back(parameter);
@@ -283,6 +301,12 @@ int _main(int argc, char** argv)
 
 	case OPERATION_INSTALLATION_GRAPH:
 		return print_installation_graph(params) ? 0 : 1;
+
+	case OPERATION_REMOVE:
+		return remove_packages (params) ? 0 : 1;
+
+	case OPERATION_REMOVAL_GRAPH:
+		return print_removal_graph (params) ? 0 : 1;
 
 	case OPERATION_LIST_INSTALLED:
 		return list_installed_packages(params) ? 0 : 1;

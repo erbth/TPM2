@@ -34,4 +34,27 @@ bool ll_change_installation_reason (
 		std::shared_ptr<PackageMetaData> mdata,
 		char reason);
 
+
+/***************************** Removing packages ******************************/
+bool print_removal_graph (std::shared_ptr<Parameters> params);
+
+bool remove_packages (std::shared_ptr<Parameters> params);
+
+bool ll_unconfigure_package (
+		std::shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		std::shared_ptr<PackageMetaData> mdata,
+		StoredMaintainerScripts& sms);
+
+bool ll_rm_files (
+		std::shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		std::shared_ptr<PackageMetaData> mdata);
+
+bool ll_run_postrm (
+		std::shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		std::shared_ptr<PackageMetaData> mdata,
+		StoredMaintainerScripts& sms);
+
 #endif /* __INSTALLATION_H */

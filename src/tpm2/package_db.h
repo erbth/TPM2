@@ -1,6 +1,8 @@
 /** This file is part of the TSClient LEGACY Package Manager
  *
- * This module implements the package database. */
+ * This module implements the package database.
+ * In the context of the database `package' usually means a specific package
+ * version. */
 
 #ifndef __PACKAGE_DB
 #define __PACKAGE_DB
@@ -63,6 +65,11 @@ public:
 	 * list. */
 	void set_files (std::shared_ptr<PackageMetaData> mdata, std::shared_ptr<FileList> files);
 	std::list<PackageDBFileEntry> get_files (std::shared_ptr<PackageMetaData> mdata);
+
+
+	/* Delete a package version and all associated tuples. Does a lot, so it's
+	 * better to call this from within a transaction. */
+	void delete_package (std::shared_ptr<PackageMetaData> mdata);
 
 
 	void begin();

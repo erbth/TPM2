@@ -31,6 +31,10 @@ private:
 
 	std::filesystem::path get_path () const;
 
+	static std::filesystem::path get_path (
+			const std::shared_ptr<Parameters> params,
+			const std::shared_ptr<PackageMetaData> mdata);
+
 	void ensure_read_stream();
 
 
@@ -56,6 +60,10 @@ public:
 	void clear_buffers();
 
 	void write() const;
+
+	static void delete_archive (
+			std::shared_ptr<Parameters> params,
+			std::shared_ptr<PackageMetaData> mdata);
 };
 
 #endif /* __STORED_MAINTAINER_SCRIPTS_H */

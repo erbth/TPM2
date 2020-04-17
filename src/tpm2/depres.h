@@ -130,7 +130,7 @@ namespace depres
 	std::list<InstallationGraphNode*> serialize_igraph (
 			const InstallationGraph& igraph, bool pre_deps);
 
-	struct contracted_node {
+	struct contracted_ig_node {
 		std::list<InstallationGraphNode*> original_nodes;
 
 		std::set<int> children;
@@ -141,7 +141,7 @@ namespace depres
 
 	/* Tarjan's strongly connected components algorithm */
 	struct scc_node {
-		InstallationGraphNode* igraph_node = nullptr;
+		void *data = nullptr;
 
 		std::list<int> children;
 
@@ -155,7 +155,64 @@ namespace depres
 		int SCC = 0;
 	};
 
+	/* @returns the number of SCCs found. */
 	int find_scc (int cnt_nodes, scc_node nodes[]);
+
+
+	/* A graph for removing packages - the Removal Graph. Like the installation
+	 * graph, it's stored using adjacency lists. For the removal graph it is not
+	 * important in which state a package is. The only thing that matters is
+	 * that it's part of the system. */
+	struct RemovalGraphNode
+	{
+		std::shared_ptr<PackageMetaData> pkg;
+
+		/* Reverse dependencies, so the Removal Graph is actualy the transposed
+		 * installation graph made of all packages in the system. Another name
+		 * for the packages 'provided' by a package would be 'dependees'. But I
+		 * did not like that term ... */
+		std::list<RemovalGraphNode*> pre_provided;
+		std::list<RemovalGraphNode*> provided;
+
+		/* Private data to use by algorithms etc. Must not be relied on to be
+		 * present after the function that uses them exits, however it is not
+		 * altered by the graph's members. Only by third entities. */
+		ssize_t algo_priv;
+
+		RemovalGraphNode (std::shared_ptr<PackageMetaData> pkg)
+			: pkg(pkg)
+		{ }
+	};
+
+	/* This struct can hold either the entire removal graph or just a branch of
+	 * it. */
+	struct RemovalGraphBranch
+	{
+		std::list<std::shared_ptr<RemovalGraphNode>> V;
+	};
+
+	/* Build the entire removal graph */
+	RemovalGraphBranch build_removal_graph (PackageDB& pkgdb);
+
+	/* Sort out a branch of packages that must be removed when remove the given
+	 * set of packages. */ 
+	void reduce_to_branch_to_remove (
+			RemovalGraphBranch& branch,
+			std::set<std::pair<std::string, int>>& pkg_ids);
+
+	std::vector<RemovalGraphNode*> serialize_rgraph (
+			RemovalGraphBranch& branch,
+			bool pre_deps);
+
+	struct contracted_rg_node
+	{
+		std::vector<RemovalGraphNode*> original_nodes;
+
+		std::set<int> children;
+
+		std::set<int> unvisited_parents;
+		bool has_parent = false;
+	};
 }
 
 #endif /* __DEPRES_H */

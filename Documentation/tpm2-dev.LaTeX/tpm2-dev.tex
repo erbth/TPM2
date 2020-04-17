@@ -232,6 +232,35 @@
 		\label{fig:package_states_install}
 	\end{figure}
 
+	\begin{figure}[ht]
+		\centering
+		
+		\begin{tikzpicture}[
+				->,
+				>=stealth',
+				node distance=6cm,
+				every state/.style={thick, fill=blue!10, rectangle},
+				initial text=$ $]
+				
+			\node[state, initial] (configured) {configured};
+			\node[state, right of=configured] (unconfigure_begin) {unconfigure\_begin};
+			\node[state, right of=unconfigure_begin] (rm_files_begin) {rm\_files\_begin};
+			\node[state, below of=rm_files_begin] (postrm_begin) {postrm\_begin};
+			\node[left of=postrm_begin] (X) {X};
+			
+			\draw	(configured) edge[above] node{$ $} (unconfigure_begin);
+			
+			\draw	(unconfigure_begin) edge[above] node{\program{unconfigure}} (rm_files_begin);
+			
+			\draw	(rm_files_begin) edge[left] node{\textit{rm files}} (postrm_begin);
+			
+			\draw	(postrm_begin) edge[above] node{\program{postrm}} (X);
+		\end{tikzpicture}
+		
+		\caption{Package states during removal}
+		\label{fig:package_states_remove}
+	\end{figure}
+
 	The ''begin'' states are required to be undo operations only once they were started. Otherwise the package manager would i.e. have to run \program{unconfigure} again when in state unpacked, even though some files may have been removed already. \program{unconfigure} may fail then. It is not required for all states but then some operations have to redo work. That is not a problem since maintainer scripts must be idempotent anyway (consider the package manager was interrupted just before it committed to the db that a script was run). One can view the system not as having states as points in time where one operation ended and the next one will begin but one operation ended some time ago and the next one may have begun already. That indicates the direction that the last operation that induced a state change took and allows to restart from there after an interruption, only redoing this one operation rather than having to consider all directions. This limits idempotence to one operation and not one operation and its predecessor.
 	
 	I would not need that indication of direction if I only considered one process, like only install. But I always need at least both.
