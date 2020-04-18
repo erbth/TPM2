@@ -1,5 +1,6 @@
-#include "depres.h"
+#include <algorithm>
 #include <set>
+#include "depres.h"
 #include "architecture.h"
 #include "common_utilities.h"
 
@@ -24,7 +25,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 	InstallationGraph g;
 
 	/* A file trie to efficiently test for conflicting packages */
-	FileTrie<set<PackageMetaData*>> file_trie;
+	FileTrie<vector<PackageMetaData*>> file_trie;
 
 	/* A set of active packages */
 	set<InstallationGraphNode*> active;
@@ -46,42 +47,35 @@ ComputeInstallationGraphResult compute_installation_graph(
 		auto files = pkgdb.get_files (p);
 		for (auto& file : files)
 		{
-			FileTrieNodeHandle<set<PackageMetaData*>> h;
-			bool is_directory = false;
-
-			h = file_trie.find_directory (file.path);
-			if (h)
-				is_directory = true;
-			else
+			/* For package collision detection it's enough to consider files
+			 * only. Directories maybe present in many packages, and files are
+			 * typically not. The latter allows for simpler file trie node to
+			 * package pointers. */
+			if (file.type != FILE_TYPE_DIRECTORY)
+			{
+				FileTrieNodeHandle<vector<PackageMetaData*>> h;
 				h = file_trie.find_file (file.path);
 
-			if ((file.type == FILE_TYPE_DIRECTORY && h && !is_directory) ||
-					(file.type != FILE_TYPE_DIRECTORY && h))
-			{
-				return ComputeInstallationGraphResult(
-						ComputeInstallationGraphResult::INVALID_CURRENT_CONFIG,
-						"Conflicting package " + p->name + "@" +
-						Architecture::to_string(p->architecture) +
-						" currently installed.");
-			}
-
-			if (!h)
-			{
-				if (file.type == FILE_TYPE_DIRECTORY)
+				if (h)
 				{
-					file_trie.insert_directory (file.path);
-					h = file_trie.find_directory (file.path);
+					return ComputeInstallationGraphResult(
+							ComputeInstallationGraphResult::INVALID_CURRENT_CONFIG,
+							"Conflicting package " + p->name + "@" +
+							Architecture::to_string(p->architecture) +
+							" currently installed.");
 				}
 				else
 				{
 					file_trie.insert_file (file.path);
 					h = file_trie.find_file (file.path);
 				}
+
+				/* No point in making this faster as this vector will only have
+				 * two elements in an valid configuration. */
+				h->data.push_back (p.get());
+
+				node->file_node_handles.push_back (h);
 			}
-
-			h->data.insert (p.get());
-
-			node->file_node_handles.push_back (h);
 		}
 	}
 
@@ -265,7 +259,10 @@ ComputeInstallationGraphResult compute_installation_graph(
 			/* Remove old files */
 			for (auto& h : pnode->file_node_handles)
 			{
-				h->data.erase (pnode->chosen_version.get());
+				/* If we have entries in the file trie that mus havae come from
+				 * somewhere. Hence this node must have a chosen version. */
+				auto i = find (h->data.begin(), h->data.end(), old_mdata.get());
+				h->data.erase (i);
 
 				if (h->data.empty())
 					file_trie.remove_element (h->get_path());
@@ -304,42 +301,29 @@ ComputeInstallationGraphResult compute_installation_graph(
 			 * For now, abort when a conflicting package would be installed. */
 			for (auto& file : *provpkg->get_files ())
 			{
-				FileTrieNodeHandle<set<PackageMetaData*>> h;
-				bool is_directory = false;
-
-				h = file_trie.find_directory (file.path);
-				if (h)
-					is_directory = true;
-				else
+				if (file.type != FILE_TYPE_DIRECTORY)
+				{
+					FileTrieNodeHandle<vector<PackageMetaData*>> h;
 					h = file_trie.find_file (file.path);
 
-				if ((file.type == FILE_TYPE_DIRECTORY && h && !is_directory) ||
-						(file.type != FILE_TYPE_DIRECTORY && h))
-				{
-					return ComputeInstallationGraphResult (
-							ComputeInstallationGraphResult::NOT_FULFILLABLE,
-							"Package " + mdata->name + "@" +
-							Architecture::to_string (mdata->architecture) + ":" +
-							mdata->version.to_string() + " would conflict with other packages.");
-				}
-
-				if (!h)
-				{
-					if (file.type == FILE_TYPE_DIRECTORY)
+					if (h)
 					{
-						file_trie.insert_directory (file.path);
-						h = file_trie.find_directory (file.path);
+						return ComputeInstallationGraphResult (
+								ComputeInstallationGraphResult::NOT_FULFILLABLE,
+								"Package " + mdata->name + "@" +
+								Architecture::to_string (mdata->architecture) + ":" +
+								mdata->version.to_string() + " would conflict with other packages.");
 					}
 					else
 					{
 						file_trie.insert_file (file.path);
 						h = file_trie.find_file (file.path);
 					}
+
+					h->data.push_back (mdata.get());
+
+					pnode->file_node_handles.push_back (h);
 				}
-
-				h->data.insert (mdata.get());
-
-				pnode->file_node_handles.push_back (h);
 			}
 
 

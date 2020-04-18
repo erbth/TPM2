@@ -74,7 +74,7 @@ namespace depres
 		/* A list of file trie nodes associated with the package for easier
 		 * removal (contains less storage than a list of filepaths and is faster
 		 * than traversing the file trie) . */
-		std::vector<FileTrieNodeHandle<std::set<PackageMetaData*>>> file_node_handles;
+		std::vector<FileTrieNodeHandle<std::vector<PackageMetaData*>>> file_node_handles;
 
 
 		/* Private data to use by algorithms etc. Must not be relied on to be
