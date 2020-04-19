@@ -213,14 +213,14 @@
 			\node[state, accepting, left of=configure_begin] (configured) {configured};
 			
 			\draw	(wanted) edge[above, bend left, color=Green] node{$ $} (preinst_begin)
-					(preinst_begin) edge[below, bend left] node{\program{prerm abort}} (wanted);
+					(preinst_begin) edge[below, bend left] node{\program{postrm abort}} (wanted);
 					
 					
 			\draw	(preinst_begin) edge[above, bend left, color=Green] node{\program{preinst}} (unpack_begin)
 					(unpack_begin) edge[below, bend left] node{\textit{rm files}} (preinst_begin);
 					
 			\draw	(unpack_begin) edge[right, bend left, color=Green] node{\textit{unpack}} (configure_begin)
-					(configure_begin) edge[left, bend left] node{\program{unconfigure}} (unpack_begin);
+					(configure_begin) edge[left, bend left] node{\program{unconfigure abort}} (unpack_begin);
 					
 			\draw	(configure_begin) edge[below, bend left, color=Green] node{\program{configure}} (configured);
 					
@@ -261,6 +261,82 @@
 		\label{fig:package_states_remove}
 	\end{figure}
 
+	\begin{figure}[ht]
+		\centering
+		
+		\textit{State change of the old package to be changed or replaced:}
+		\vspace{1eM}
+		
+		\begin{tikzpicture}[
+				->,
+				>=stealth',
+				node distance=6cm,
+				every state/.style={thick, fill=blue!10, rectangle},
+				initial text=$ $]
+				
+			\node[state, initial] (configured) {configured};
+			\node[state, right of=configured] (unconfigure_change) {unconfigure\_change};
+			\node[state, right of=unconfigure_change] (wait_new_unpacked) {wait\_new\_unpacked};
+			\node[state, below of=wait_new_unpacked] (rm_files_change) {rm\_files\_change};
+			\node[state, left of=rm_files_change] (postrm_change) {postrm\_change};
+			\node[left of=postrm_change] (X) {X};
+			
+			\draw	(configured) edge[above, bend left, color=Green] node{$ $} (unconfigure_change)
+					(unconfigure_change) edge[below, bend left] node{\program{configure abort-change}} (configured);
+					
+			\draw	(unconfigure_change) edge[above, bend left, color=Green] node{\program{unconfigure change}} (wait_new_unpacked)
+					(wait_new_unpacked) edge[below, bend left] node{$ $} (unconfigure_change);
+					
+			\draw	(wait_new_unpacked) edge[right, bend left, color=Green] node{$ $} (rm_files_change)
+					(rm_files_change) edge[left, bend left] node{\textit{unpack}} (wait_new_unpacked);
+					
+			\draw	(rm_files_change) edge[below, bend left, color=Green] node{\textit{rm files}} (postrm_change)
+					(postrm_change) edge[above, bend left] node{\program{postrm abort-change}} (rm_files_change);
+					
+			\draw	(postrm_change) edge[below, bend left, color=Green] node{\program{postrm change}} (X)
+					(X) edge[above, bend left] node{$ $} (postrm_change);
+				
+		\end{tikzpicture}
+		
+		\vspace{1eM}
+		\textit{State change of the new package:}
+		\vspace{1eM}
+		
+		\begin{tikzpicture}[
+				->,
+				>=stealth',
+				node distance=6cm,
+				every state/.style={thick, fill=blue!10, rectangle},
+				initial text=$ $]
+				
+			\node[state, initial] (wanted) {wanted};
+			\node[state, right of=wanted] (preinst_change) {preinst\_change};
+			\node[state, right of=preinst_change] (unpack_change) {unpack\_change};
+			\node[state, below of=unpack_change] (wait_old_removed) {wait\_old\_removed};
+			\node[state, left of=wait_old_removed] (configure_change) {configure\_change};
+			\node[state, accepting, left of=configure_change] (configured) {configured};
+	
+			\draw	(wanted) edge[above, bend left, color=Green] node{$ $} (preinst_change)
+					(preinst_change) edge[below, bend left] node{\program{postrm abort-change}} (wanted);
+			
+			
+			\draw	(preinst_change) edge[above, bend left, color=Green] node{\program{preinst change}} (unpack_change)
+					(unpack_change) edge[below, bend left] node{\textit{rm files}} (preinst_change);
+			
+			\draw	(unpack_change) edge[right, bend left, color=Green] node{\textit{unpack}} (wait_old_removed)
+					(wait_old_removed) edge[left, bend left] node{$ $} (unpack_change);
+					
+			\draw	(wait_old_removed) edge[below, bend left, color=Green] node{$ $} (configure_change)
+					(configure_change) edge[above, bend left] node{\program{unconfigure abort-change}} (wait_old_removed);
+			
+			\draw	(configure_change) edge[below, bend left, color=Green] node{\program{configure change}} (configured);
+				
+		\end{tikzpicture}
+		
+		\caption{Package states during change / replacement}
+		\label{fig:package_states_change}
+	\end{figure}
+
 	The ''begin'' states are required to be undo operations only once they were started. Otherwise the package manager would i.e. have to run \program{unconfigure} again when in state unpacked, even though some files may have been removed already. \program{unconfigure} may fail then. It is not required for all states but then some operations have to redo work. That is not a problem since maintainer scripts must be idempotent anyway (consider the package manager was interrupted just before it committed to the db that a script was run). One can view the system not as having states as points in time where one operation ended and the next one will begin but one operation ended some time ago and the next one may have begun already. That indicates the direction that the last operation that induced a state change took and allows to restart from there after an interruption, only redoing this one operation rather than having to consider all directions. This limits idempotence to one operation and not one operation and its predecessor.
 	
 	I would not need that indication of direction if I only considered one process, like only install. But I always need at least both.
@@ -281,6 +357,14 @@
 			\item unconfigure\_begin
 			\item rm\_files\_begin
 			\item postrm\_begin
+			\item unconfigure\_change
+			\item wait\_new\_unpacked
+			\item rm\_files\_change
+			\item postrm\_change
+			\item preinst\_change
+			\item unpack\_change
+			\item wait\_old\_removed
+			\item configure\_upgrade
 		\end{itemize}
 		
 		\caption{Required package states}

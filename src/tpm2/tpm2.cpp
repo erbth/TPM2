@@ -89,8 +89,8 @@ void print_help()
 "  --installation-graph    Print the dependency graph in the dot format; If\n"
 "                          packages are specified, they are added to the graph.\n\n"
 
-"  --reverse-dependencies  List the List the packages that depend on the\n"
-"                          specified package directly or indirectly\n\n"
+"  --reverse-dependencies  List the packages that depend on the specified\n"
+"                          package directly or indirectly\n\n"
 
 "  --mark-manual           Mark the specified packages as manually installed\n\n"
 

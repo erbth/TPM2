@@ -28,6 +28,14 @@
 #define PKG_STATE_UNCONFIGURE_BEGIN		6
 #define PKG_STATE_RM_FILES_BEGIN		7
 #define PKG_STATE_POSTRM_BEGIN			8
+#define PKG_STATE_UNCONFIGURE_CHANGE	9
+#define PKG_STATE_WAIT_NEW_UNPACKED		10
+#define PKG_STATE_RM_FILES_CHANGE		11
+#define PKG_STATE_POSTRM_CHANGE			12
+#define PKG_STATE_PREINST_CHANGE		13
+#define PKG_STATE_UNPACK_CHANGE			14
+#define PKG_STATE_WAIT_OLD_REMOVED		15
+#define PKG_STATE_CONFIGURE_CHANGE		16
 
 /* Only for selecting packages */
 #define ALL_PKG_STATES					1000
@@ -64,6 +72,12 @@ struct PackageMetaData
 
 	char installation_reason;
 	int state;
+
+
+	/* Private data to use by algorithms etc. Must not be relied on to be
+	 * present after the function that uses them exits, however it is not
+	 * altered by the graph's members. Only by third entities. */
+	ssize_t algo_priv;
 
 
 	/* Methods */

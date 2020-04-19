@@ -14,6 +14,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 		shared_ptr<Parameters> params,
 		vector<shared_ptr<PackageMetaData>> installed_packages,
 		PackageDB& pkgdb,
+		shared_ptr<PackageProvider> pprov,
 		vector<
 			pair<
 				pair<const string, int>,
@@ -21,16 +22,17 @@ ComputeInstallationGraphResult compute_installation_graph(
 			>
 		> new_packages)
 {
-	/* The installation graph */
+	/* The installation graph with a file trie to efficientry test for
+	 * conflicting packages. */
 	InstallationGraph g;
-
-	/* A file trie to efficiently test for conflicting packages */
-	FileTrie<vector<PackageMetaData*>> file_trie;
 
 	/* A set of active packages */
 	set<InstallationGraphNode*> active;
 
-	/* Add all installed packages to the installation graph */
+	/* Add all installed packages to the installation graph. This does also
+	 * construct two file tries, one that will be altered while depres computes
+	 * the target configuration and one that will represent the original
+	 * situation for later use while packages are installed. */
 	for (auto p : installed_packages)
 	{
 		auto node = make_shared<InstallationGraphNode>(
@@ -54,7 +56,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 			if (file.type != FILE_TYPE_DIRECTORY)
 			{
 				FileTrieNodeHandle<vector<PackageMetaData*>> h;
-				h = file_trie.find_file (file.path);
+				h = g.file_trie.find_file (file.path);
 
 				if (h)
 				{
@@ -66,8 +68,8 @@ ComputeInstallationGraphResult compute_installation_graph(
 				}
 				else
 				{
-					file_trie.insert_file (file.path);
-					h = file_trie.find_file (file.path);
+					g.file_trie.insert_file (file.path);
+					h = g.file_trie.find_file (file.path);
 				}
 
 				/* No point in making this faster as this vector will only have
@@ -174,8 +176,6 @@ ComputeInstallationGraphResult compute_installation_graph(
 
 
 	/* Choose versions and resolve dependencies */
-	shared_ptr<PackageProvider> pprov = PackageProvider::create (params);
-
 	while (active.size() > 0)
 	{
 		auto i = active.begin();
@@ -265,7 +265,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 				h->data.erase (i);
 
 				if (h->data.empty())
-					file_trie.remove_element (h->get_path());
+					g.file_trie.remove_element (h->get_path());
 			}
 
 			pnode->file_node_handles.clear();
@@ -304,7 +304,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 				if (file.type != FILE_TYPE_DIRECTORY)
 				{
 					FileTrieNodeHandle<vector<PackageMetaData*>> h;
-					h = file_trie.find_file (file.path);
+					h = g.file_trie.find_file (file.path);
 
 					if (h)
 					{
@@ -316,8 +316,8 @@ ComputeInstallationGraphResult compute_installation_graph(
 					}
 					else
 					{
-						file_trie.insert_file (file.path);
-						h = file_trie.find_file (file.path);
+						g.file_trie.insert_file (file.path);
+						h = g.file_trie.find_file (file.path);
 					}
 
 					h->data.push_back (mdata.get());
@@ -421,7 +421,7 @@ void InstallationGraph::add_node(shared_ptr<InstallationGraphNode> n)
 
 
 /* To serialize an installation graph. */
-void visit (contracted_ig_node H[], list<InstallationGraphNode*>& serialized, int v)
+void visit (contracted_ig_node H[], vector<InstallationGraphNode*>& serialized, int v)
 {
 	/* There are a more sophisticated approaches to installing one SCC ...
 	 */
@@ -439,7 +439,7 @@ void visit (contracted_ig_node H[], list<InstallationGraphNode*>& serialized, in
 
 /* If @param pre_deps is set, pre-dependencies are used instead of dependencies.
  * */
-list<InstallationGraphNode*> serialize_igraph (
+vector<InstallationGraphNode*> serialize_igraph (
 		const InstallationGraph& igraph, bool pre_deps)
 {
 	/* Construct a data structure to hold the nodes' working variables and
@@ -501,7 +501,7 @@ list<InstallationGraphNode*> serialize_igraph (
 	}
 
 	/* Obviously it's enough to ensure that all parents were visited before. */
-	list<InstallationGraphNode*> serialized;
+	vector<InstallationGraphNode*> serialized;
 
 	for (int v = 0; v < count_sccs; v++)
 	{
@@ -510,6 +510,237 @@ list<InstallationGraphNode*> serialize_igraph (
 	}
 
 	return serialized;
+}
+
+
+vector<shared_ptr<PackageMetaData>> find_packages_to_remove (
+		vector<shared_ptr<PackageMetaData>> installed_packages,
+		const InstallationGraph& igraph)
+{
+	vector<shared_ptr<PackageMetaData>> to_remove;
+
+	for (auto pkg : installed_packages)
+	{
+		auto iv = igraph.V.find (make_pair (pkg->name, pkg->architecture));
+		if (iv != igraph.V.end())
+		{
+			if (iv->second->currently_installed_version != iv->second->chosen_version->version)
+				to_remove.push_back (pkg);
+		}
+		else
+		{
+			to_remove.push_back (pkg);
+		}
+	}
+
+	return to_remove;
+}
+
+compute_operations_result compute_operations (
+		PackageDB& pkgdb,
+		InstallationGraph& igraph,
+		vector<shared_ptr<PackageMetaData>>& pkgs_to_remove,
+		vector<InstallationGraphNode*>& ig_nodes)
+{
+	compute_operations_result result;
+
+	/* First, build set B so that the reverse edges can be inserted when forward
+	 * edges are inserted. Packages that are part of the final configuration but
+	 * are already configured cannot be adjacent to packages from set A, because
+	 * otherwise they they would replace a package. However mark them as not
+	 * used to be safe. */
+	for (auto& p : igraph.V)
+		p.second->algo_priv = -1;
+
+	int i = 0;
+
+	for (auto ig_node : ig_nodes)
+	{
+		if (ig_node->currently_installed_version &&
+				ig_node->currently_installed_version == ig_node->chosen_version->version &&
+				ig_node->chosen_version->state == PKG_STATE_CONFIGURED)
+		{
+			continue;
+		}
+
+		result.B.emplace_back (-1, ig_node);
+		ig_node->algo_priv = i++;
+	}
+
+	/* Build the bipartite graph */
+	for (auto pkg : pkgs_to_remove)
+	{
+		pkg_operation op (-1, pkg);
+
+		/* Find each package that will conflict with this one and add an edge
+		 * for it. */
+		for (auto& file : pkgdb.get_files (pkg))
+		{
+			/* Again, it suffices to use non-directories only to detect
+			 * conflicting packages. Note that this will not temporarily remove
+			 * directories as old files are removed after new ones are unpacked.
+			 * */
+			if (file.type != FILE_TYPE_DIRECTORY)
+			{
+				auto h = igraph.file_trie.find_file (file.path);
+				if (h)
+				{
+					/* Will usually be only one */
+					for (auto mdata : h->data)
+					{
+						auto iv = igraph.V.find (make_pair (mdata->name, mdata->architecture));
+
+						/* Should not happen, but be safe. */
+						if (iv == igraph.V.end() || iv->second->algo_priv == -1)
+						{
+							throw gp_exception ("INTERNAL ERROR: depress::compute_operations: "
+									"Conflict with a file that does not belong "
+									"to a package that will be new in the final configuration.");
+						}
+
+						shared_ptr<InstallationGraphNode> v = iv->second;
+
+						if (find (
+									op.involved_ig_nodes.begin(),
+									op.involved_ig_nodes.end(),
+									v.get()) == op.involved_ig_nodes.end())
+						{
+							op.involved_ig_nodes.push_back (v.get());
+
+							/* Add reverse edge */
+							result.B[v->algo_priv].involved_packages.push_back (pkg);
+						}
+					}
+				}
+			}
+		}
+
+		result.A.push_back (move (op));
+	}
+
+	/* Determine operations */
+	for (auto& a : result.A)
+	{
+		if (a.involved_ig_nodes.empty())
+		{
+			a.operation = pkg_operation::REMOVE;
+		}
+		else if (a.involved_ig_nodes.size() > 1)
+		{
+			a.operation = pkg_operation::REPLACE_REMOVE;
+		}
+		else
+		{
+			if (a.involved_ig_nodes[0]->chosen_version->name == a.pkg->name &&
+					a.involved_ig_nodes[0]->chosen_version->architecture == a.pkg->architecture)
+			{
+				a.operation = pkg_operation::CHANGE_REMOVE;
+			}
+			else
+			{
+				a.operation = pkg_operation::REPLACE_REMOVE;
+			}
+		}
+	}
+
+	for (auto& b : result.B)
+	{
+		if (b.involved_packages.empty())
+		{
+			b.operation = pkg_operation::INSTALL_NEW;
+		}
+		else if (b.involved_packages.size() == 1 &&
+				b.involved_packages[0]->name == b.ig_node->chosen_version->name &&
+				b.involved_packages[0]->architecture == b.ig_node->chosen_version->architecture)
+		{
+			b.operation = pkg_operation::CHANGE_INSTALL;
+		}
+		else
+		{
+			b.operation = pkg_operation::REPLACE_INSTALL;
+		}
+	}
+
+	return result;
+}
+
+
+vector<pkg_operation> order_operations (compute_operations_result& bigraph, bool pre_deps)
+{
+	vector<pkg_operation> sequence;
+
+	/* Prepare */
+	vector<shared_ptr<PackageMetaData>> pkgs_to_remove;
+
+	int i = 0;
+	for (auto& a : bigraph.A)
+	{
+		a.algo_priv = false;
+		pkgs_to_remove.push_back (a.pkg);
+		a.pkg->algo_priv = i++;
+	}
+
+	/* Build a partial removal graph */
+	RemovalGraphBranch rgraph = build_removal_graph (pkgs_to_remove);
+
+
+	auto current_b = bigraph.B.begin();
+
+	while (current_b != bigraph.B.end())
+	{
+		if (current_b->operation == pkg_operation::INSTALL_NEW)
+		{
+			sequence.push_back (*current_b++);
+		}
+		else
+		{
+			/* Remove the conflicting packages first, and all the packages that
+			 * would depend on them. */
+			for (shared_ptr<PackageMetaData> a_pkg : current_b->involved_packages)
+			{
+				auto& a = bigraph.A[a_pkg->algo_priv];
+
+				if (!a.algo_priv)
+				{
+					auto remove_subsequence = serialize_rgraph (
+							rgraph, pre_deps, a_pkg);
+
+					for (auto rg_node : remove_subsequence)
+					{
+						auto& op = bigraph.A[rg_node->pkg->algo_priv];
+
+						if (!op.algo_priv)
+						{
+							sequence.push_back (op);
+							op.algo_priv = true;
+						}
+					}
+				}
+			}
+
+			sequence.push_back (*current_b++);
+		}
+	}
+
+	/* Add unassigned removal operations at the end */
+	for (auto& a : bigraph.A)
+		if (!a.algo_priv)
+			sequence.push_back (a);
+
+	return sequence;
+}
+
+
+vector<pkg_operation> generate_installation_order_from_igraph (
+		PackageDB& pkgdb,
+		InstallationGraph& igraph,
+		vector<shared_ptr<PackageMetaData>>& installed_packages,
+		bool pre_deps)
+{
+	auto ig_node_sequence = serialize_igraph (igraph, pre_deps);
+	auto pkgs_to_remove = find_packages_to_remove (installed_packages, igraph);
+	auto bigraph = compute_operations (pkgdb, igraph, pkgs_to_remove, ig_node_sequence);
+	return order_operations (bigraph, pre_deps);
 }
 
 
@@ -582,18 +813,16 @@ int find_scc (int cnt_nodes, scc_node nodes[])
 }
 
 
-RemovalGraphBranch build_removal_graph (PackageDB& pkgdb)
+RemovalGraphBranch build_removal_graph (vector<shared_ptr<PackageMetaData>> installed_packages)
 {
 	RemovalGraphBranch g;
 
-	auto all_pkgs = pkgdb.get_packages_in_state (ALL_PKG_STATES);
-
 	/* A temporary map for to resolve dependency descriptions to installed
 	 * packages. */
-	map<pair<string, int>,std::shared_ptr<RemovalGraphNode>> id_to_node;
+	map<pair<string, int>,shared_ptr<RemovalGraphNode>> id_to_node;
 
 	/* Create nodes */
-	for (auto pkg : all_pkgs)
+	for (auto pkg : installed_packages)
 	{
 		auto node = make_shared<RemovalGraphNode>(pkg);
 
@@ -616,18 +845,6 @@ RemovalGraphBranch build_removal_graph (PackageDB& pkgdb)
 			{
 				i->second->pre_provided.push_back (node.get());
 			}
-			else
-			{
-				/* This could be a normal situation after an aborted removal
-				 * operation. But I don't want to have the user (me) uninformed
-				 * yet as I don't trust my code to build the graph right. */
-				fprintf (stderr,
-						"INFO: Installed package %s@%s's pre-dependency %s@%s is not met.\n",
-						pkg->name.c_str(),
-						Architecture::to_string (pkg->architecture).c_str(),
-						dep.identifier.first.c_str(),
-						Architecture::to_string (dep.identifier.second).c_str());
-			}
 		}
 
 		for (auto& dep : pkg->dependencies)
@@ -636,16 +853,6 @@ RemovalGraphBranch build_removal_graph (PackageDB& pkgdb)
 			if (i != id_to_node.end())
 			{
 				i->second->provided.push_back (node.get());
-			}
-			else
-			{
-				/* Same as above */
-				fprintf (stderr,
-						"INFO: Installed package %s@%s's dependency %s@%s is not met.\n",
-						pkg->name.c_str(),
-						Architecture::to_string (pkg->architecture).c_str(),
-						dep.identifier.first.c_str(),
-						Architecture::to_string (dep.identifier.second).c_str());
 			}
 		}
 	}
@@ -722,7 +929,8 @@ void visit (contracted_rg_node H[], vector<RemovalGraphNode*>& serialized, int v
 }
 
 
-vector<RemovalGraphNode*> serialize_rgraph (RemovalGraphBranch& branch, bool pre_deps)
+vector<RemovalGraphNode*> serialize_rgraph (
+		RemovalGraphBranch& branch, bool pre_deps, shared_ptr<PackageMetaData> start_node)
 {
 	/* Find SCCs. Large memory should be on the heap. */
 	int cnt_nodes = branch.V.size();
@@ -778,10 +986,39 @@ vector<RemovalGraphNode*> serialize_rgraph (RemovalGraphBranch& branch, bool pre
 	/* Traverse the contracted graph */
 	vector<RemovalGraphNode*> serialized;
 
-	for (int v = 0; v < cnt_sccs; v++)
+	/* If a start node is specified, start traversal only there. That does
+	 * essentially not cover its ancestors (except if they are descendants, too,
+	 * i.e. it is part of a cycle). */
+	if (start_node)
 	{
-		if (!H[v].has_parent)
+		int v = 0;
+		bool found = false;
+
+		for (; v < cnt_sccs; v++)
+		{
+			for (auto rg_node : H[v].original_nodes)
+			{
+				if (rg_node->pkg == start_node)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if (found)
+				break;
+		}
+
+		if (found)
 			visit (H.get(), serialized, v);
+	}
+	else
+	{
+		for (int v = 0; v < cnt_sccs; v++)
+		{
+			if (!H[v].has_parent)
+				visit (H.get(), serialized, v);
+		}
 	}
 
 	return serialized;

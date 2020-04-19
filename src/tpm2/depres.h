@@ -30,6 +30,7 @@ namespace depres
 			std::shared_ptr<Parameters> params,
 			std::vector<std::shared_ptr<PackageMetaData>> installed_packages,
 			PackageDB& pkgdb,
+			std::shared_ptr<PackageProvider> pprov,
 			std::vector<
 				std::pair<
 					std::pair<const std::string, int>,
@@ -99,6 +100,9 @@ namespace depres
 		 * nodes for adding edges. */
 		std::map<std::pair<std::string, int>, std::shared_ptr<InstallationGraphNode>> V;
 
+		/* The final file trie. It does not contain directories. */
+		FileTrie<std::vector<PackageMetaData*>> file_trie;
+
 		void add_node(std::shared_ptr<InstallationGraphNode> n);
 	};
 
@@ -126,8 +130,13 @@ namespace depres
 	};
 
 
-	/* To serialize an installation graph */
-	std::list<InstallationGraphNode*> serialize_igraph (
+	/* To serialize an installation graph. This does only order the nodes that
+	 * shall be installed. It does not consider packages that shall be removed,
+	 * and not provide or hold information about why the packages reported shall
+	 * be installed. The installation graph should only represent the target
+	 * configuration, not how to get there. And this function helps in finding
+	 * the latter, but does only one part of the work. */
+	std::vector<InstallationGraphNode*> serialize_igraph (
 			const InstallationGraph& igraph, bool pre_deps);
 
 	struct contracted_ig_node {
@@ -138,6 +147,109 @@ namespace depres
 		std::set<int> unvisited_parents;
 		bool has_parent = false;
 	};
+
+
+	/* Find package versions that shall be removed based on a list of currently
+	 * installed packages and an installation graph.  This function is stable as
+	 * it does not change the order in which packages are given as input.
+	 * pre_deps specifies whether pre- or regular dependencies are to be used.
+	 * */
+	std::vector<std::shared_ptr<PackageMetaData>> find_packages_to_remove (
+			std::vector<std::shared_ptr<PackageMetaData>> installed_packages,
+			const InstallationGraph& igraph);
+
+
+	/* Add information to packages and igraph nodes about why they have to be
+	 * installed or removed. */
+	struct pkg_operation {
+		/* Operations are >= 0 s.t. negative values are left for use by
+		 * algorithms. */
+		static const char INSTALL_NEW = 0;
+
+		/* The old version must be CHANGE_REMOVE'd, the new one
+		 * CHANGE_INSTALL'd. */
+		static const char CHANGE_REMOVE = 1;
+		static const char CHANGE_INSTALL = 2;
+
+		/* Same for replace. In this case, involved_pkgs will contain a list of
+		 * packages that will replace the package if it shall be removed, or a
+		 * list of packages that will be replaced by this package. */
+		static const char REPLACE_REMOVE = 3;
+		static const char REPLACE_INSTALL = 4;
+
+		/* Only remove. Removes i.e. packages that depend on packages that would
+		 * conflict but don't conflict themselves. */
+		static const char REMOVE = 5;
+
+		char operation;
+
+		/* Removal operations use the PackageMetaData fields, install operations
+		 * the InstallationGraphNode* fields. */
+		const std::shared_ptr<PackageMetaData> pkg;
+		InstallationGraphNode * const ig_node;
+
+		std::vector<std::shared_ptr<PackageMetaData>> involved_packages;
+		std::vector<InstallationGraphNode*> involved_ig_nodes;
+
+
+		/* Like always */
+		bool algo_priv;
+
+
+		pkg_operation (char operation, std::shared_ptr<PackageMetaData> pkg)
+			: operation(operation), pkg(pkg), ig_node(nullptr)
+		{ }
+
+		pkg_operation (char operation, InstallationGraphNode* ig_node)
+			: operation(operation), pkg(nullptr), ig_node(ig_node)
+		{ }
+	};
+
+
+	/* This function builds a bipartite graph and uses it do build operations
+	 * out of wanted package states. It is stable as it does not change the
+	 * order in which installation graph nodes and packages to remove are given.
+	 * 
+	 * compute_operations does only add operations to the sequence that actually
+	 * do something. All others would be skipped by the ll code anyway. */
+	struct compute_operations_result {
+		/* The bipartite graph represented by adjacency lists in both
+		 * directions. The involved_nodes vectors int the operation structurs
+		 * are the actual adjacency lists. */
+		std::vector<pkg_operation> A;
+		std::vector<pkg_operation> B;
+	};
+
+	compute_operations_result compute_operations (
+			PackageDB& pkgdb,
+			InstallationGraph& igraph,
+			std::vector<std::shared_ptr<PackageMetaData>>& pkgs_to_remove,
+			std::vector<InstallationGraphNode*>& ig_nodes);
+
+
+	/* Order the operations from compute_operations into one sequence that can
+	 * be performed by the ll part. */
+	std::vector<pkg_operation> order_operations (compute_operations_result& bigraph, bool pre_deps);
+
+
+	/* All-in-one function to generate a sequence of operations from an
+	 * installation graph. @param pre_deps specifies whether pre-dependencies or
+	 * dependencies shall be used for package ordering. Well, this is not
+	 * perfect as this way imposes that choice on the entire sequence, which
+	 * splits the install/upgrade operation into 4 part: (1) unconfigure, (2)
+	 * unpack, (3) rm files, (4) configure. That does not minimize the delay
+	 * between unconfigure and configure again, but ensures that package's
+	 * dependencies are met. However I feel this could work with a smaller
+	 * delay, too. But I think I don't need that by now. The perfect solution
+	 * would be that the packages support that delay, anyway. But a small enough
+	 * delay (a few pkg ops?) should do, too, if I had it ... Anyway. This is
+	 * reality. */
+	std::vector<pkg_operation> generate_installation_order_from_igraph (
+			PackageDB& pkgdb,
+			InstallationGraph& igraph,
+			std::vector<std::shared_ptr<PackageMetaData>>& installed_packages,
+			bool pre_deps);
+
 
 	/* Tarjan's strongly connected components algorithm */
 	struct scc_node {
@@ -192,7 +304,8 @@ namespace depres
 	};
 
 	/* Build the entire removal graph */
-	RemovalGraphBranch build_removal_graph (PackageDB& pkgdb);
+	RemovalGraphBranch build_removal_graph (
+			std::vector<std::shared_ptr<PackageMetaData>> installed_packages);
 
 	/* Sort out a branch of packages that must be removed when remove the given
 	 * set of packages. */ 
@@ -202,7 +315,8 @@ namespace depres
 
 	std::vector<RemovalGraphNode*> serialize_rgraph (
 			RemovalGraphBranch& branch,
-			bool pre_deps);
+			bool pre_deps,
+			std::shared_ptr<PackageMetaData> start_node = nullptr);
 
 	struct contracted_rg_node
 	{

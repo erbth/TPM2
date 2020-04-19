@@ -14,6 +14,7 @@
 #include "depres.h"
 #include "package_db.h"
 #include "safe_console_input.h"
+#include "package_provider.h"
 
 using namespace std;
 namespace pc = PackageConstraints;
@@ -141,7 +142,8 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 	}
 
 	depres::ComputeInstallationGraphResult r =
-		depres::compute_installation_graph(params, installed_packages, pkgdb, new_packages);
+		depres::compute_installation_graph(params, installed_packages, pkgdb,
+				PackageProvider::create (params), new_packages);
 
 	if (r.status != depres::ComputeInstallationGraphResult::SUCCESS)
 	{
@@ -254,8 +256,10 @@ bool install_packages(shared_ptr<Parameters> params)
 		}
 	}
 
-	/* Find packages in repo and resolve their dependencies, recursively. For
-	 * this I have the depres module. */
+	/* Find packages the requested packages in a repo and resolve their
+	 * dependencies recursively. I have the depres module for this task. */
+	shared_ptr<PackageProvider> pprov = PackageProvider::create (params);
+
 	vector<pair<pair<const string, int>, shared_ptr<const PackageConstraints::Formula>>> new_packages;
 
 	for (const auto& pkg : params->operation_packages)
@@ -273,7 +277,8 @@ bool install_packages(shared_ptr<Parameters> params)
 	}
 
 	depres::ComputeInstallationGraphResult comp_igraph_res =
-		depres::compute_installation_graph (params, installed_packages, pkgdb, new_packages);
+		depres::compute_installation_graph (
+				params, installed_packages, pkgdb, pprov, new_packages);
 
 	if (comp_igraph_res.status != depres::ComputeInstallationGraphResult::SUCCESS)
 	{
@@ -286,93 +291,615 @@ bool install_packages(shared_ptr<Parameters> params)
 	depres::InstallationGraph& igraph = comp_igraph_res.g;
 
 
-	/* Check if package versions need to be changed. This is not supported yet.
-	 * And depred does not remove installed packages yet, hence this check is
-	 * enough to make sure that only new versions will be installed. */
-	for (auto t : igraph.V)
+	/* Determine an unpack and a configuration order */
+	vector<depres::pkg_operation> unpack_order =
+		depres::generate_installation_order_from_igraph (
+			pkgdb,
+			igraph,
+			installed_packages,
+			true);
+
+	vector<depres::pkg_operation> configure_order =
+		depres::generate_installation_order_from_igraph (
+			pkgdb,
+			igraph,
+			installed_packages,
+			false);
+
+
+	printf ("unpack order:\n");
+	for (auto& op : unpack_order)
 	{
-		auto ig_node = t.second;
+		string name, op_name, version;
 
-		if (ig_node->currently_installed_version &&
-				(*ig_node->currently_installed_version != ig_node->chosen_version->version))
+		switch (op.operation)
 		{
-			fprintf (stderr, "Changing package versions is not supported yet.\n");
-			fprintf (stderr, "%s@%s would be changed from %s to %s.\n",
-					ig_node->name.c_str(),
-					Architecture::to_string (ig_node->architecture).c_str(),
-					ig_node->currently_installed_version->to_string().c_str(),
-					ig_node->chosen_version->version.to_string().c_str());
+			case depres::pkg_operation::INSTALL_NEW:
+				name = op.ig_node->chosen_version->name;
+				version = op.ig_node->chosen_version->version.to_string();
+				op_name = "install_new";
+				break;
 
-			return false;
+			case depres::pkg_operation::REMOVE:
+				name = op.pkg->name;
+				version = op.pkg->version.to_string();
+				op_name = "remove";
+				break;
+
+			case depres::pkg_operation::CHANGE_REMOVE:
+				name = op.pkg->name;
+				version = op.pkg->version.to_string();
+				op_name = "change_remove";
+				break;
+
+			case depres::pkg_operation::CHANGE_INSTALL:
+				name = op.ig_node->chosen_version->name;
+				version = op.ig_node->chosen_version->version.to_string();
+				op_name = "change_install";
+				break;
+
+			case depres::pkg_operation::REPLACE_REMOVE:
+				name = op.pkg->name;
+				version = op.pkg->version.to_string();
+				op_name = "replace_remove";
+				break;
+
+			case depres::pkg_operation::REPLACE_INSTALL:
+				name = op.ig_node->chosen_version->name;
+				version = op.ig_node->chosen_version->version.to_string();
+				op_name = "replace_install";
+				break;
+
+			default:
+				break;
 		}
+
+		printf ("  %s:%s - %s\n", name.c_str(), version.c_str(), op_name.c_str());
 	}
 
+	printf ("configure order:\n");
+	for (auto& op : configure_order)
+	{
+		string name, op_name, version;
 
-	/* Determine an unpack and a configuration order */
-	list<depres::InstallationGraphNode*> unpack_order = depres::serialize_igraph (
-			igraph, true);
+		switch (op.operation)
+		{
+			case depres::pkg_operation::INSTALL_NEW:
+				name = op.ig_node->chosen_version->name;
+				version = op.ig_node->chosen_version->version.to_string();
+				op_name = "install_new";
+				break;
 
-	list<depres::InstallationGraphNode*> configuration_order = depres::serialize_igraph (
-			igraph, false);
+			case depres::pkg_operation::REMOVE:
+				name = op.pkg->name;
+				version = op.pkg->version.to_string();
+				op_name = "remove";
+				break;
+
+			case depres::pkg_operation::CHANGE_REMOVE:
+				name = op.pkg->name;
+				version = op.pkg->version.to_string();
+				op_name = "change_remove";
+				break;
+
+			case depres::pkg_operation::CHANGE_INSTALL:
+				name = op.ig_node->chosen_version->name;
+				version = op.ig_node->chosen_version->version.to_string();
+				op_name = "change_install";
+				break;
+
+			case depres::pkg_operation::REPLACE_REMOVE:
+				name = op.pkg->name;
+				version = op.pkg->version.to_string();
+				op_name = "replace_remove";
+				break;
+
+			case depres::pkg_operation::REPLACE_INSTALL:
+				name = op.ig_node->chosen_version->name;
+				version = op.ig_node->chosen_version->version.to_string();
+				op_name = "replace_install";
+				break;
+
+			default:
+				break;
+		}
+
+		printf ("  %s:%s - %s\n", name.c_str(), version.c_str(), op_name.c_str());
+	}
+
+	printf ("\n");
 
 
 	/* Set package states of new packages to wanted. They are invalid now. */
-	for (auto ig_node : unpack_order)
+	for (auto& op : unpack_order)
 	{
-		if (ig_node->chosen_version->state == PKG_STATE_INVALID)
-			ig_node->chosen_version->state = PKG_STATE_WANTED;
+		if (op.ig_node && op.ig_node->chosen_version->state == PKG_STATE_INVALID)
+			op.ig_node->chosen_version->state = PKG_STATE_WANTED;
 	}
 
-	/* Low-level unpack the packages */
+
+	/* See what operations we have got from drepres. */
+	bool remove_pkgs = false;
+	bool change_pkgs = false;
+
+	for (auto& op : unpack_order)
+	{
+		switch (op.operation)
+		{
+			case depres::pkg_operation::INSTALL_NEW:
+				break;
+
+			case depres::pkg_operation::REMOVE:
+				remove_pkgs = true;
+				break;
+
+			default:
+				change_pkgs = true;
+				break;
+		}
+	}
+
+	/* If packages are to be removed or changed, ask for confirmation. */
+	if (remove_pkgs || change_pkgs)
+	{
+		vector<pair<const string,const int>> to_remove;
+		vector<pair<const string,const int>> to_change;
+		vector<pair<const string,const int>> to_install;
+
+		for (auto& op : unpack_order)
+		{
+			switch (op.operation)
+			{
+				case depres::pkg_operation::INSTALL_NEW:
+				case depres::pkg_operation::REPLACE_INSTALL:
+					to_install.push_back (make_pair (
+								op.ig_node->chosen_version->name,
+								op.ig_node->chosen_version->architecture));
+					break;
+
+				case depres::pkg_operation::REMOVE:
+				case depres::pkg_operation::REPLACE_REMOVE:
+					to_remove.push_back (make_pair (
+								op.pkg->name,
+								op.pkg->architecture));
+					break;
+
+				case depres::pkg_operation::CHANGE_REMOVE:
+					to_change.push_back (make_pair (
+								op.pkg->name,
+								op.pkg->architecture));
+					break;
+
+				default:
+					break;
+			}
+		}
+
+		if (remove_pkgs)
+		{
+			printf ("These packages will be removed:\n");
+			for (auto& p : to_remove)
+				printf ("  %s@%s\n", p.first.c_str(), Architecture::to_string (p.second).c_str());
+
+			printf ("\n");
+		}
+
+		if (change_pkgs)
+		{
+			printf ("These packages will be changed:\n");
+			for (auto& p : to_change)
+				printf ("  %s@%s\n", p.first.c_str(), Architecture::to_string (p.second).c_str());
+
+			printf ("\n");
+		}
+
+		if (!to_install.empty())
+		{
+			printf ("These packages will be installed:\n");
+			for (auto& p : to_install)
+				printf ("  %s@%s\n", p.first.c_str(), Architecture::to_string (p.second).c_str());
+
+			printf ("\n");
+		}
+
+		if (remove_pkgs || change_pkgs || !to_install.empty())
+		{
+			printf ("Continue? ");
+			auto c = safe_query_user_input ("Yn");
+			if (c != 'y')
+			{
+				printf ("User aborted.\n");
+				return false;
+			}
+		}
+	}
+
+
+	/* A pointer feels smoother here than an optional. */
+	unique_ptr<FileTrie<vector<PackageMetaData*>>> current_trie;
+
+	if (change_pkgs)
+	{
+		current_trie = make_unique<FileTrie<vector<PackageMetaData*>>>();
+
+		/* Read files and build a file trie. */
+		for (auto pkg : installed_packages)
+		{
+			for (auto& file : pkgdb.get_files (pkg))
+			{
+				auto h = current_trie->find_directory (file.path);
+
+				if (!h)
+				{
+					current_trie->insert_directory (file.path);
+					h = current_trie->find_directory (file.path);
+				}
+
+				/* Should not be too many and spares overhead of set */
+				if (find (h->data.begin(), h->data.end(), pkg.get()) == h->data.end())
+					h->data.push_back (pkg.get());
+			}
+		}
+	}
+
+
+	/* Fetch missing archives. This is useful if continuing after having aborted
+	 * an installation. */
+	for (auto op : unpack_order)
+	{
+		if (
+				op.operation == depres::pkg_operation::INSTALL_NEW &&
+				op.operation == depres::pkg_operation::CHANGE_INSTALL &&
+				op.operation == depres::pkg_operation::REPLACE_INSTALL)
+		{
+			depres::InstallationGraphNode* ig_node = op.ig_node;
+			shared_ptr<PackageMetaData> mdata = ig_node->chosen_version;
+
+			/* Check for states that need archives */
+			if (
+					mdata->state == PKG_STATE_WANTED ||
+					mdata->state == PKG_STATE_PREINST_BEGIN ||
+					mdata->state == PKG_STATE_PREINST_CHANGE ||
+					mdata->state == PKG_STATE_UNPACK_BEGIN ||
+					mdata->state == PKG_STATE_UNPACK_CHANGE)
+			{
+				if (!ig_node->provided_package)
+				{
+					ig_node->provided_package = pprov->get_package (
+							mdata->name, mdata->architecture, mdata->version);
+
+					if (!ig_node->provided_package)
+					{
+						fprintf (stderr,
+								"Could not fetch package %s@%s:%s (required after depres).\n",
+								mdata->name.c_str(),
+								Architecture::to_string (mdata->architecture).c_str(),
+								mdata->version.to_string().c_str());
+
+						return false;
+					}
+				}
+			}
+		}
+	}
+
+
+	/* If required, low-level unconfigure the packages to remove / change /
+	 * replace */
+	if (remove_pkgs || change_pkgs)
+	{
+		printf ("Unconfiguring old packages.\n");
+
+		for (auto op : configure_order)
+		{
+			if (
+					op.operation != depres::pkg_operation::REMOVE &&
+					op.operation != depres::pkg_operation::CHANGE_REMOVE &&
+					op.operation != depres::pkg_operation::REPLACE_REMOVE)
+			{
+				continue;
+			}
+
+			shared_ptr<PackageMetaData> mdata = op.pkg;
+			bool change = op.operation != depres::pkg_operation::REMOVE;
+
+			if (
+					mdata->state == PKG_STATE_CONFIGURED ||
+					mdata->state == PKG_STATE_UNCONFIGURE_BEGIN ||
+					mdata->state == PKG_STATE_UNCONFIGURE_CHANGE)
+			{
+				if (!params->target_is_native())
+				{
+					fprintf (stderr, "Cannot unconfigure packages because the target system is not native.\n");
+					return false;
+				}
+
+				printf ("ll unconfiguring package %s@%s\n", mdata->name.c_str(),
+						Architecture::to_string (mdata->architecture).c_str());
+
+				/* Integrity protection */
+				if (change && mdata->state == PKG_STATE_UNCONFIGURE_BEGIN)
+				{
+					fprintf (stderr, "Depres requested a change but the package is not in a change state.\n");
+					return false;
+				}
+				else if (!change && mdata->state == PKG_STATE_UNCONFIGURE_CHANGE)
+				{
+					fprintf (stderr, "Depres did not request a change but the package is in a change state.\n");
+					return false;
+				}
+
+				StoredMaintainerScripts sms(params, mdata);
+
+				if (change)
+				{
+					if (!ll_unconfigure_package (params, pkgdb, mdata, sms, true))
+					{
+						return false;
+					}
+				}
+				else
+				{
+					if (!ll_unconfigure_package (params, pkgdb, mdata, sms, false))
+					{
+						return false;
+					}
+				}
+			}
+		}
+	}
+
+
+	/* Low-level unpack the new packages and run their preinst scripts */
 	printf ("Unpacking packages.\n");
 
-	for (auto ig_node : unpack_order)
+	for (auto op : unpack_order)
 	{
-		if (ig_node->chosen_version->state == PKG_STATE_WANTED)
+		if (
+				op.operation != depres::pkg_operation::INSTALL_NEW &&
+				op.operation != depres::pkg_operation::CHANGE_INSTALL &&
+				op.operation != depres::pkg_operation::REPLACE_INSTALL)
 		{
-			if (!ll_unpack_package (params, pkgdb, ig_node->provided_package))
-				return false;
+			continue;
 		}
-		else
+
+		depres::InstallationGraphNode* ig_node = op.ig_node;
+		shared_ptr<PackageMetaData> mdata = ig_node->chosen_version;
+		shared_ptr<ProvidedPackage> pp = ig_node->provided_package;
+
+		bool change = op.operation != depres::pkg_operation::INSTALL_NEW;
+
+		/* Potentially change installation reason */
+		if (ig_node->manual && ig_node->chosen_version->installation_reason
+				!= INSTALLATION_REASON_MANUAL)
 		{
-			/* Potentially change installation reason */
-			if (ig_node->manual && ig_node->chosen_version->installation_reason
-					!= INSTALLATION_REASON_MANUAL)
+			if (!ll_change_installation_reason (
+						pkgdb,
+						mdata,
+						INSTALLATION_REASON_MANUAL))
 			{
-				if (!ll_change_installation_reason (
-							pkgdb,
-							ig_node->chosen_version,
-							INSTALLATION_REASON_MANUAL))
+				return false;
+			}
+		}
+		else if (!ig_node->manual && ig_node->chosen_version->installation_reason
+				== INSTALLATION_REASON_MANUAL)
+		{
+			if (!ll_change_installation_reason (
+						pkgdb,
+						mdata,
+						INSTALLATION_REASON_AUTO))
+			{
+				return false;
+			}
+		}
+
+		/* Perform ll operations of the installation procedure */
+		if (
+				mdata->state == PKG_STATE_WANTED ||
+				mdata->state == PKG_STATE_PREINST_BEGIN ||
+				mdata->state == PKG_STATE_UNPACK_BEGIN ||
+				mdata->state == PKG_STATE_PREINST_CHANGE ||
+				mdata->state == PKG_STATE_UNPACK_CHANGE)
+		{
+			printf ("ll unpacking package %s@%s\n", mdata->name.c_str(),
+					Architecture::to_string (mdata->architecture).c_str());
+
+			/* Integrity protection */
+			if (change && mdata->state == PKG_STATE_PREINST_BEGIN)
+			{
+				fprintf (stderr, "Depres requested a change but the package is not in a change state.\n");
+				return false;
+			}
+			else if (!change && mdata->state == PKG_STATE_PREINST_CHANGE)
+			{
+				fprintf (stderr, "Depres did not request a change but the package is in a change state.\n");
+				return false;
+			}
+
+			/* ll preinst */
+			if ((change && mdata->state == PKG_STATE_WANTED) ||
+					(mdata->state == PKG_STATE_PREINST_CHANGE))
+			{
+				if (!ll_run_preinst (params, pkgdb, pp, true, current_trie.get()))
+					return false;
+			}
+			else if (mdata->state == PKG_STATE_WANTED || mdata->state == PKG_STATE_PREINST_BEGIN)
+			{
+				if (!ll_run_preinst (params, pkgdb, pp, false, current_trie.get()))
+					return false;
+			}
+
+			/* Integrity protection */
+			if (change && mdata->state == PKG_STATE_UNPACK_BEGIN)
+			{
+				fprintf (stderr, "Depres requested a change but the package is not in a change state.\n");
+				return false;
+			}
+			else if (!change && mdata->state == PKG_STATE_UNPACK_CHANGE)
+			{
+				fprintf (stderr, "Depres did not request a change but the package is in a change state.\n");
+				return false;
+			}
+
+			/* ll unpack */
+			if (mdata->state == PKG_STATE_UNPACK_CHANGE)
+			{
+				if (!ll_unpack (params, pkgdb, pp, true))
+					return false;
+			}
+			else if (mdata->state == PKG_STATE_UNPACK_BEGIN)
+			{
+				if (!ll_unpack (params, pkgdb, pp, false))
+					return false;
+			}
+					
+		}
+	}
+
+
+	/* Low-level remove the files of old packages + run postrm. */
+	if (remove_pkgs || change_pkgs)
+	{
+		printf ("Removing packages.\n");
+
+		for (auto op : unpack_order)
+		{
+			if (
+					op.operation != depres::pkg_operation::REMOVE &&
+					op.operation != depres::pkg_operation::CHANGE_REMOVE &&
+					op.operation != depres::pkg_operation::REPLACE_REMOVE)
+			{
+				continue;
+			}
+
+			shared_ptr<PackageMetaData> mdata = op.pkg;
+			bool change = op.operation != depres::pkg_operation::REMOVE;
+
+			if (
+					mdata->state == PKG_STATE_RM_FILES_BEGIN ||
+					mdata->state == PKG_STATE_POSTRM_BEGIN ||
+					mdata->state == PKG_STATE_WAIT_NEW_UNPACKED ||
+					mdata->state == PKG_STATE_RM_FILES_CHANGE ||
+					mdata->state == PKG_STATE_POSTRM_CHANGE)
+			{
+				printf ("ll removing package %s@%s\n", mdata->name.c_str(),
+						Architecture::to_string (mdata->architecture).c_str());
+
+				/* Integrity protection */
+				if (change && mdata->state == PKG_STATE_RM_FILES_BEGIN)
 				{
+					fprintf (stderr, "Depres requested a change but the package is not in a change state.\n");
 					return false;
 				}
-			}
-			else if (!ig_node->manual && ig_node->chosen_version->installation_reason
-					== INSTALLATION_REASON_MANUAL)
-			{
-				if (!ll_change_installation_reason (
-							pkgdb,
-							ig_node->chosen_version,
-							INSTALLATION_REASON_AUTO))
+				else if (!change && (
+							mdata->state == PKG_STATE_WAIT_NEW_UNPACKED ||
+							mdata->state == PKG_STATE_RM_FILES_CHANGE))
 				{
+					fprintf (stderr, "Depres did not request a change but the package is in a change state.\n");
 					return false;
+				}
+
+				/* ll remove files */
+				if (mdata->state == PKG_STATE_WAIT_NEW_UNPACKED || mdata->state == PKG_STATE_RM_FILES_CHANGE)
+				{
+					if (!ll_rm_files (params, pkgdb, mdata, true, current_trie.get()))
+						return false;
+				}
+				else if (mdata->state == PKG_STATE_RM_FILES_BEGIN)
+				{
+					if (!ll_rm_files (params, pkgdb, mdata, false))
+						return false;
+				}
+
+				/* Integrity protection */
+				if (change && mdata->state == PKG_STATE_POSTRM_BEGIN)
+				{
+					fprintf (stderr, "Depres requested a change but the package is not in a change state.\n");
+					return false;
+				}
+				else if (!change && mdata->state == PKG_STATE_POSTRM_CHANGE)
+				{
+					fprintf (stderr, "Depres did not request a change but the package is in a change state.\n");
+					return false;
+				}
+
+				/* ll postrm */
+				StoredMaintainerScripts sms(params, mdata);
+
+				if (mdata->state == PKG_STATE_POSTRM_CHANGE)
+				{
+					if (!ll_run_postrm (params, pkgdb, mdata, sms, true))
+					{
+						return false;
+					}
+				}
+				else if (mdata->state == PKG_STATE_POSTRM_BEGIN)
+				{
+					if (!ll_run_postrm (params, pkgdb, mdata, sms, false))
+					{
+						return false;
+					}
 				}
 			}
 		}
 	}
 
-	/* Low-level configure the packages */
+
+	/* Low-level configure the new packages */
 	if (params->target_is_native())
 	{
 		printf ("Configuring packages.\n");
 
-		for (auto ig_node : configuration_order)
+		for (auto op : configure_order)
 		{
-			if (ig_node->chosen_version->state == PKG_STATE_CONFIGURE_BEGIN)
+			if (
+					op.operation != depres::pkg_operation::INSTALL_NEW &&
+					op.operation != depres::pkg_operation::CHANGE_INSTALL &&
+					op.operation != depres::pkg_operation::REPLACE_INSTALL)
 			{
-				if (!ll_configure_package (params, pkgdb, ig_node->chosen_version,
-							ig_node->provided_package, ig_node->sms))
+				continue;
+			}
+
+			depres::InstallationGraphNode* ig_node = op.ig_node;
+			bool change = op.operation != depres::pkg_operation::INSTALL_NEW;
+
+			if (
+					ig_node->chosen_version->state == PKG_STATE_CONFIGURE_BEGIN ||
+					ig_node->chosen_version->state == PKG_STATE_WAIT_OLD_REMOVED ||
+					ig_node->chosen_version->state == PKG_STATE_CONFIGURE_CHANGE)
+			{
+				printf ("ll configuring package %s@%s\n",
+						ig_node->chosen_version->name.c_str(),
+						Architecture::to_string (ig_node->chosen_version->architecture).c_str());
+
+				/* Integrity protection */
+				if (change && ig_node->chosen_version->state == PKG_STATE_CONFIGURE_BEGIN)
+				{
+					fprintf (stderr, "Depres requested a change but the package is not in a change state.\n");
 					return false;
+				}
+				else if (!change && (
+							ig_node->chosen_version->state == PKG_STATE_CONFIGURE_CHANGE ||
+							ig_node->chosen_version->state == PKG_STATE_WAIT_OLD_REMOVED))
+				{
+					fprintf (stderr, "Depres did not request a change but the package is in a change state.\n");
+					return false;
+				}
+
+				if (
+						ig_node->chosen_version->state == PKG_STATE_WAIT_OLD_REMOVED ||
+						ig_node->chosen_version->state == PKG_STATE_CONFIGURE_CHANGE)
+				{
+					if (!ll_configure_package (params, pkgdb, ig_node->chosen_version,
+								ig_node->provided_package, ig_node->sms, true))
+						return false;
+				}
+				else if (ig_node->chosen_version->state == PKG_STATE_CONFIGURE_BEGIN)
+				{
+					if (!ll_configure_package (params, pkgdb, ig_node->chosen_version,
+								ig_node->provided_package, ig_node->sms, false))
+						return false;
+				}
 			}
 		}
 	}
@@ -385,16 +912,20 @@ bool install_packages(shared_ptr<Parameters> params)
 }
 
 
-bool ll_unpack_package (
+bool ll_run_preinst (
 		shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
-		shared_ptr<ProvidedPackage> pp)
+		shared_ptr<ProvidedPackage> pp,
+		bool change,
+		FileTrie<vector<PackageMetaData*>>* current_trie)
 {
 	auto mdata = pp->get_mdata();
 
-	printf ("ll unpacking package %s@%s\n", mdata->name.c_str(),
-			Architecture::to_string (mdata->architecture).c_str());
-
+	if (!(
+				(mdata->state == PKG_STATE_WANTED) ||
+				(!change && mdata->state == PKG_STATE_PREINST_BEGIN) ||
+				(change && mdata->state == PKG_STATE_PREINST_CHANGE)))
+		throw gp_exception ("ll_run_preinst called with pkg in inacceptable state.");
 
 	/* Look for existing files and eventually adopt them */
 	printf ("  Looking for existing files ...");
@@ -410,6 +941,29 @@ bool ll_unpack_package (
 		{
 			stringstream ss;
 
+			/* Augment file trie if one is specified and skip the files from old
+			 * pacakges if change semantics are requested. */
+			if (current_trie)
+			{
+				auto h = current_trie->find_directory (file.path);
+
+				if (!h)
+				{
+					current_trie->insert_directory (file.path);
+					h = current_trie->find_directory (file.path);
+				}
+
+				if (find (h->data.begin(), h->data.end(), mdata.get()) == h->data.end())
+					h->data.push_back (mdata.get());
+
+				/* Now this file will be registered for at least this package.
+				 * If it belongs to other packages as well, these must be old
+				 * packages (otherwise there would be  a conflict). */
+				if (change && h->data.size() > 1)
+					continue;
+			}
+
+			/* Adoption semantics */
 			if (!file.non_existent_or_matches (params->target, &ss))
 			{
 				if (first)
@@ -449,7 +1003,7 @@ bool ll_unpack_package (
 	{
 		pkgdb.begin();
 
-		mdata->state = PKG_STATE_PREINST_BEGIN;
+		mdata->state = change ? PKG_STATE_PREINST_CHANGE : PKG_STATE_PREINST_BEGIN;
 
 		pkgdb.update_or_create_package (mdata);
 		pkgdb.set_dependencies (mdata);
@@ -489,9 +1043,14 @@ bool ll_unpack_package (
 
 		auto preinst = pp->get_preinst();
 		if (preinst)
-			run_script (params, *preinst);
+		{
+			if (change)
+				run_script (params, *preinst, "change");
+			else
+				run_script (params, *preinst);
+		}
 
-		mdata->state = PKG_STATE_UNPACK_BEGIN;
+		mdata->state = change ? PKG_STATE_UNPACK_CHANGE : PKG_STATE_UNPACK_BEGIN;
 		pkgdb.update_state (mdata);
 
 		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
@@ -503,6 +1062,22 @@ bool ll_unpack_package (
 		return false;
 	}
 
+	return true;
+}
+
+
+bool ll_unpack (
+		shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		shared_ptr<ProvidedPackage> pp,
+		bool change)
+{
+	auto mdata = pp->get_mdata ();
+
+	if (!(
+				(!change && mdata->state == PKG_STATE_UNPACK_BEGIN) ||
+				(change && mdata->state == PKG_STATE_UNPACK_CHANGE)))
+		throw gp_exception ("ll_unpack called with pkg in inacceptable state.");
 
 	/* Unpack the archive */
 	try
@@ -513,7 +1088,7 @@ bool ll_unpack_package (
 		if (pp->has_archive())
 			pp->unpack_archive_to_directory (params->target);
 
-		mdata->state = PKG_STATE_CONFIGURE_BEGIN;
+		mdata->state = change ? PKG_STATE_WAIT_OLD_REMOVED : PKG_STATE_CONFIGURE_BEGIN;
 		pkgdb.update_state (mdata);
 
 		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
@@ -534,15 +1109,39 @@ bool ll_configure_package (
 		PackageDB& pkgdb,
 		shared_ptr<PackageMetaData> mdata,
 		shared_ptr<ProvidedPackage> pp,
-		shared_ptr<StoredMaintainerScripts> sms)
+		shared_ptr<StoredMaintainerScripts> sms,
+		bool change)
 {
-	printf ("ll configuring package %s@%s\n",
-			mdata->name.c_str(), Architecture::to_string (mdata->architecture).c_str());
 
 	if (!pp && !sms)
+		throw gp_exception ("ll_configure: Neither pp nor sms specified.");
+
+	if (!(
+				(!change && mdata->state == PKG_STATE_CONFIGURE_BEGIN) ||
+				(change && mdata->state == PKG_STATE_WAIT_OLD_REMOVED) ||
+				(change && mdata->state == PKG_STATE_CONFIGURE_CHANGE)))
+		throw gp_exception ("ll_configure called with pkg in inacceptable state.");
+
+
+	/* If in a waiting state, mark the package first. */
+	if (mdata->state == PKG_STATE_WAIT_OLD_REMOVED)
 	{
-		fprintf (stderr, "Internal error: Neither pp nor sms specified.");
-		return false;
+		try
+		{
+			printf ("  Moving package from wait_old_removed ...");
+			fflush (stdout);
+
+			mdata->state = PKG_STATE_CONFIGURE_CHANGE;
+			pkgdb.update_state (mdata);
+
+			printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		}
+		catch (exception& e)
+		{
+			printf (COLOR_RED " failed" COLOR_NORMAL "\n");
+			printf ("%s\n", e.what());
+			return false;
+		}
 	}
 
 
@@ -554,7 +1153,12 @@ bool ll_configure_package (
 
 		auto configure = pp ? pp->get_configure() : sms->get_configure();
 		if (configure)
-			run_script (params, *configure);
+		{
+			if (change)
+				run_script (params, *configure, "change");
+			else
+				run_script (params, *configure);
+		}
 
 
 		mdata->state = PKG_STATE_CONFIGURED;
@@ -622,7 +1226,8 @@ bool print_removal_graph (shared_ptr<Parameters> params)
 	}
 
 	/* Build the removal graph */
-	depres::RemovalGraphBranch g = depres::build_removal_graph (pkgdb);
+	depres::RemovalGraphBranch g = depres::build_removal_graph (
+			pkgdb.get_packages_in_state (ALL_PKG_STATES));
 
 	/* If any packages are specified, reduce it to the branch to remove */
 	if (!pkg_ids.empty())
@@ -687,7 +1292,9 @@ bool remove_packages (std::shared_ptr<Parameters> params)
 	}
 
 	/* Build the removal graph */
-	depres::RemovalGraphBranch g = depres::build_removal_graph (pkgdb);
+	depres::RemovalGraphBranch g = depres::build_removal_graph (
+			pkgdb.get_packages_in_state (ALL_PKG_STATES));
+
 	depres::reduce_to_branch_to_remove (g, pkg_ids);
 
 	/* Compute an unconfigure and rmfiles order */
@@ -739,12 +1346,12 @@ bool remove_packages (std::shared_ptr<Parameters> params)
 				return false;
 			}
 
-			printf (" unconfiguring package %s@%s\n",
+			printf ("ll unconfiguring package %s@%s\n",
 					rg_node->pkg->name.c_str(),
 					Architecture::to_string (rg_node->pkg->architecture).c_str());
 
 			if (!ll_unconfigure_package (params, pkgdb, rg_node->pkg,
-					sms_map.find(rg_node->pkg)->second))
+					sms_map.find(rg_node->pkg)->second, false))
 			{
 				return false;
 			}
@@ -754,20 +1361,20 @@ bool remove_packages (std::shared_ptr<Parameters> params)
 	printf ("Removing packages.\n");
 	for (auto rg_node : rmfiles_order)
 	{
-		printf (" removing package %s@%s\n",
+		printf ("ll removing package %s@%s\n",
 				rg_node->pkg->name.c_str(),
 				Architecture::to_string (rg_node->pkg->architecture).c_str());
 
 		if (rg_node->pkg->state == PKG_STATE_RM_FILES_BEGIN)
 		{
-			if (!ll_rm_files (params, pkgdb, rg_node->pkg))
+			if (!ll_rm_files (params, pkgdb, rg_node->pkg, false))
 				return false;
 		}
 
 		if (rg_node->pkg->state == PKG_STATE_POSTRM_BEGIN)
 		{
 			if (!ll_run_postrm (params, pkgdb, rg_node->pkg,
-						sms_map.find(rg_node->pkg)->second))
+						sms_map.find(rg_node->pkg)->second, false))
 			{
 				return false;
 			}
@@ -782,9 +1389,13 @@ bool ll_unconfigure_package (
 		shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
 		shared_ptr<PackageMetaData> mdata,
-		StoredMaintainerScripts& sms)
+		StoredMaintainerScripts& sms,
+		bool change)
 {
-	if (mdata->state != PKG_STATE_CONFIGURED && mdata->state != PKG_STATE_UNCONFIGURE_BEGIN)
+	if (!(
+				mdata->state == PKG_STATE_CONFIGURED ||
+				(!change && mdata->state == PKG_STATE_UNCONFIGURE_BEGIN) ||
+				(change && mdata->state == PKG_STATE_UNCONFIGURE_CHANGE)))
 		throw gp_exception ("ll_unconfigure_package called with pkg in inaccepted state.");
 
 	try
@@ -792,7 +1403,7 @@ bool ll_unconfigure_package (
 		printf ("  Marking unconfiguration in db ...");
 		fflush (stdout);
 
-		mdata->state = PKG_STATE_UNCONFIGURE_BEGIN;
+		mdata->state = change ? PKG_STATE_UNCONFIGURE_CHANGE : PKG_STATE_UNCONFIGURE_BEGIN;
 		pkgdb.update_state (mdata);
 
 		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
@@ -813,10 +1424,15 @@ bool ll_unconfigure_package (
 
 		auto unconfigure = sms.get_unconfigure();
 		if (unconfigure)
-			run_script (params, *unconfigure);
+		{
+			if (change)
+				run_script (params, *unconfigure, "change");
+			else
+				run_script (params, *unconfigure);
+		}
 
 
-		mdata->state = PKG_STATE_RM_FILES_BEGIN;
+		mdata->state = change ? PKG_STATE_WAIT_NEW_UNPACKED : PKG_STATE_RM_FILES_BEGIN;
 		pkgdb.update_state (mdata);
 
 		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
@@ -835,10 +1451,38 @@ bool ll_unconfigure_package (
 bool ll_rm_files (
 		shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
-		shared_ptr<PackageMetaData> mdata)
+		shared_ptr<PackageMetaData> mdata,
+		bool change,
+		FileTrie<vector<PackageMetaData*>>* current_trie)
 {
-	if (mdata->state != PKG_STATE_RM_FILES_BEGIN)
+	if (!(
+				(!change && mdata->state == PKG_STATE_RM_FILES_BEGIN) ||
+				(change && mdata->state == PKG_STATE_RM_FILES_CHANGE) ||
+				(change && mdata->state == PKG_STATE_WAIT_NEW_UNPACKED)))
 		throw gp_exception ("ll_rm_files called with pkg in inacceptable state.");
+
+
+	/* If in a waiting state, mark the package first. */
+	if (mdata->state == PKG_STATE_WAIT_NEW_UNPACKED)
+	{
+		try
+		{
+			printf ("  Moving package from wait_new_unpacked ...");
+			fflush (stdout);
+
+			mdata->state = PKG_STATE_RM_FILES_CHANGE;
+			pkgdb.update_state (mdata);
+
+			printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		}
+		catch (exception& e)
+		{
+			printf (COLOR_RED " failed" COLOR_NORMAL "\n");
+			printf ("%s\n", e.what());
+			return false;
+		}
+	}
+
 
 	try
 	{
@@ -856,6 +1500,31 @@ bool ll_rm_files (
 				directories.splice (directories.end(), files, iter++);
 			else
 				++iter;
+		}
+
+		/* If change semantics shall be used, filter out the files that will
+		 * belong to different packages than this one. */
+		if (change)
+		{
+			auto fiter = files.begin();
+			while (fiter != files.end())
+			{
+				auto h = current_trie->find_directory (fiter->path);
+				if (h && (h->data.size() > 1 || (h->data.size() == 1 && h->data[0] != mdata.get())))
+					files.erase (fiter++);
+				else
+					fiter++;
+			}
+
+			auto diter = directories.begin();
+			while (diter != directories.end())
+			{
+				auto h = current_trie->find_directory (diter->path);
+				if (h && (h->data.size() > 1 || (h->data.size() == 1 && h->data[0] != mdata.get())))
+					directories.erase (diter++);
+				else
+					diter++;
+			}
 		}
 
 		/* Makes sure that subdirectories come first. That is, the longer paths
@@ -908,7 +1577,7 @@ bool ll_rm_files (
 		}
 
 
-		mdata->state = PKG_STATE_POSTRM_BEGIN;
+		mdata->state = change ? PKG_STATE_POSTRM_CHANGE : PKG_STATE_POSTRM_BEGIN;
 		pkgdb.update_state (mdata);
 
 		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
@@ -928,9 +1597,12 @@ bool ll_run_postrm (
 		shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
 		shared_ptr<PackageMetaData> mdata,
-		StoredMaintainerScripts& sms)
+		StoredMaintainerScripts& sms,
+		bool change)
 {
-	if (mdata->state != PKG_STATE_POSTRM_BEGIN)
+	if (!(
+				(!change && mdata->state == PKG_STATE_POSTRM_BEGIN) ||
+				(change && mdata->state == PKG_STATE_POSTRM_CHANGE)))
 		throw gp_exception ("ll_run_postrm called with pkg in inacceptable state.");
 
 	try
@@ -941,7 +1613,12 @@ bool ll_run_postrm (
 
 		auto postrm = sms.get_postrm();
 		if (postrm)
-			run_script (params, *postrm);
+		{
+			if (change)
+				run_script (params, *postrm, "change");
+			else
+				run_script (params, *postrm);
+		}
 
 		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}

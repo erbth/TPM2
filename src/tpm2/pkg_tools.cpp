@@ -37,6 +37,30 @@ string pkg_state_to_string (int state)
 		case PKG_STATE_POSTRM_BEGIN:
 			return "postrm_begin";
 
+		case PKG_STATE_UNCONFIGURE_CHANGE:
+			return "unconfigure_change";
+
+		case PKG_STATE_WAIT_NEW_UNPACKED:
+			return "wait_new_unpacked";
+
+		case PKG_STATE_RM_FILES_CHANGE:
+			return "rm_files_change";
+
+		case PKG_STATE_POSTRM_CHANGE:
+			return "postrm_change";
+
+		case PKG_STATE_PREINST_CHANGE:
+			return "preinst_change";
+
+		case PKG_STATE_UNPACK_CHANGE:
+			return "unpack_change";
+
+		case PKG_STATE_WAIT_OLD_REMOVED:
+			return "wait_old_removed";
+
+		case PKG_STATE_CONFIGURE_CHANGE:
+			return "configure_change";
+
 		default:
 			return "???";
 	};
