@@ -69,7 +69,7 @@ string pkg_state_to_string (int state)
 
 bool list_installed_packages (shared_ptr<Parameters> params)
 {
-	print_target (params);
+	print_target (params, true);
 	PackageDB pkgdb (params);
 
 	printf ("\n");
@@ -102,8 +102,9 @@ bool list_installed_packages (shared_ptr<Parameters> params)
 }
 
 
-bool show_version (std::shared_ptr<Parameters> params)
+bool show_version (shared_ptr<Parameters> params)
 {
+	print_target (params, true);
 	if (params->operation_packages.empty())
 	{
 		fprintf (stderr, "No package specified.\n");

@@ -62,6 +62,7 @@ bool ll_change_installation_reason (
 
 /***************************** Removing packages ******************************/
 bool print_removal_graph (std::shared_ptr<Parameters> params);
+bool list_reverse_dependencies (std::shared_ptr<Parameters> params);
 
 bool remove_packages (std::shared_ptr<Parameters> params);
 

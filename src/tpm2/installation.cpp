@@ -1181,6 +1181,88 @@ bool print_removal_graph (shared_ptr<Parameters> params)
 }
 
 
+bool list_reverse_dependencies (shared_ptr<Parameters> params)
+{
+	print_target (params);
+
+	/* If no packages are specifies, there's nothing to do. */
+	if (params->operation_packages.empty())
+		return true;
+
+	PackageDB pkgdb (params);
+
+	/* Interpret the given package specifications */
+	set<pair<string, int>> pkg_ids;
+
+	for (const auto& pkg : params->operation_packages)
+	{
+		auto res = parse_cmd_param (*params, pkg);
+		if (!res.success)
+		{
+			fprintf (stderr, "Unknown package description: %s (%s)\n",
+					res.pkg.c_str(), res.err.c_str());
+			return false;
+		}
+
+		pkg_ids.emplace (make_pair(move(res.name), res.arch));
+	}
+
+
+	auto all_packages = pkgdb.get_packages_in_state (ALL_PKG_STATES);
+
+	/* Check that all queried packages are installed. */
+	set<pair<string, int>> installed_pkg_ids;
+
+	for (auto mdata : all_packages)
+	{
+		auto i = pkg_ids.find (make_pair (mdata->name, mdata->architecture));
+		if (i != pkg_ids.end())
+			installed_pkg_ids.insert (make_pair (mdata->name, mdata->architecture));
+	}
+
+	if (installed_pkg_ids.size() != pkg_ids.size())
+	{
+		for (auto& id : pkg_ids)
+		{
+			if (installed_pkg_ids.find (id) == installed_pkg_ids.end())
+			{
+				fprintf (stderr, "Package %s@%s is not installed.\n",
+						id.first.c_str(),
+						Architecture::to_string (id.second).c_str());
+			}
+		}
+
+		return false;
+	}
+
+
+	/* Build the removal graph */
+	depres::RemovalGraphBranch g = depres::build_removal_graph (all_packages);
+
+	/* Reduce it to the branch to remove */
+	depres::reduce_to_branch_to_remove (g, pkg_ids);
+
+	/* Sort print the the packages from the removal graph. */
+	vector<pair<string, int>> pkgs;
+
+	for (auto node : g.V)
+	{
+		/* Don't include the packages for which the user asked to get the
+		 * reverse dependencies. The removal graph will contain them, of course.
+		 * */
+		if (pkg_ids.find (make_pair (node->pkg->name, node->pkg->architecture)) == pkg_ids.end())
+			pkgs.push_back (make_pair (node->pkg->name, node->pkg->architecture));
+	}
+
+	sort (pkgs.begin(), pkgs.end());
+	
+	for (auto& pkg : pkgs)
+		printf ("%s@%s\n", pkg.first.c_str(), Architecture::to_string(pkg.second).c_str());
+
+	return true;
+}
+
+
 bool remove_packages (std::shared_ptr<Parameters> params)
 {
 	print_target (params, false);

@@ -89,8 +89,8 @@ void print_help()
 "  --installation-graph    Print the dependency graph in the dot format; If\n"
 "                          packages are specified, they are added to the graph.\n\n"
 
-"  --reverse-dependencies  List the packages that depend on the specified\n"
-"                          package directly or indirectly\n\n"
+"  --reverse-dependencies  List the packages that depend or pre-depend on the\n"
+"                          specified packages directly or indirectly.\n\n"
 
 "  --mark-manual           Mark the specified packages as manually installed\n\n"
 
@@ -259,7 +259,8 @@ int _main(int argc, char** argv)
 							params->operation == OPERATION_REMOVAL_GRAPH ||
 							params->operation == OPERATION_MARK_MANUAL ||
 							params->operation == OPERATION_MARK_AUTO ||
-							params->operation == OPERATION_SHOW_VERSION
+							params->operation == OPERATION_SHOW_VERSION ||
+							params->operation == OPERATION_REVERSE_DEPENDENCIES
 					   )
 					{
 						if (
@@ -324,6 +325,9 @@ int _main(int argc, char** argv)
 
 	case OPERATION_LIST_INSTALLED:
 		return list_installed_packages(params) ? 0 : 1;
+
+	case OPERATION_REVERSE_DEPENDENCIES:
+		return list_reverse_dependencies(params) ? 0 : 1;
 
 	case OPERATION_SHOW_VERSION:
 		return show_version (params) ? 0 : 1;
