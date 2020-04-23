@@ -11,6 +11,7 @@
 #include "parameters.h"
 #include "common_utilities.h"
 #include "managed_buffer.h"
+#include "package_constraints.h"
 
 void print_target(std::shared_ptr<Parameters> params, bool to_stderr = false);
 
@@ -26,5 +27,25 @@ void run_script (std::shared_ptr<Parameters> params, ManagedBuffer<char>& script
 std::filesystem::path create_tmp_dir (std::shared_ptr<Parameters> params);
 
 std::string installation_reason_to_string (char reason);
+
+
+/* A function with result object class to parse package specifications supplied
+ * by the user */
+struct parse_cmd_param_result
+{
+	bool success;
+	const std::string& pkg;
+	std::string err;
+
+	std::string name;
+	int arch;
+	std::shared_ptr<PackageConstraints::Formula> vc;
+
+	parse_cmd_param_result (const std::string& pkg)
+		: pkg(pkg)
+	{}
+};
+
+parse_cmd_param_result parse_cmd_param (const Parameters& params, const std::string& pkg);
 
 #endif /* __UTILITY_H */

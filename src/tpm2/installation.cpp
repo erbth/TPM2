@@ -8,7 +8,6 @@
 #include <iostream>
 #include <map>
 #include <optional>
-#include <regex>
 #include <sstream>
 #include "installation.h"
 #include "utility.h"
@@ -18,96 +17,7 @@
 #include "package_provider.h"
 
 using namespace std;
-namespace pc = PackageConstraints;
 namespace fs = std::filesystem;
-
-
-struct parse_cmd_param_result
-{
-	bool success;
-	const string& pkg;
-	string err;
-
-	string name;
-	int arch;
-	shared_ptr<pc::Formula> vc;
-
-	parse_cmd_param_result (const string& pkg)
-		: pkg(pkg)
-	{}
-};
-
-parse_cmd_param_result parse_cmd_param (const Parameters& params, const std::string& pkg)
-{
-	parse_cmd_param_result res (pkg);
-	res.success = true;
-	res.arch = params.default_architecture;
-
-	/* May be of the form name@arch>=version */
-	const regex pattern1(
-			"([^<>!=@]+)[ \t]*(@(amd64|i386))?[ \t]*((>=|<=|>|<|=|==|!=)(s:)?([^<>!=@]+))?");
-
-	smatch m1;
-	if (regex_match (pkg, m1, pattern1))
-	{
-		res.name = m1[1].str();
-		
-		if (m1[4].matched)
-		{
-			auto op = m1[5];
-
-			char type;
-
-			if (op == ">=")
-			{
-				type = pc::PrimitivePredicate::TYPE_GEQ;
-			}
-			else if (op == "<=")
-			{
-				type = pc::PrimitivePredicate::TYPE_LEQ;
-			}
-			else if (op == ">")
-			{
-				type = pc::PrimitivePredicate::TYPE_GT;
-			}
-			else if (op == "<")
-			{
-				type = pc::PrimitivePredicate::TYPE_LT;
-			}
-			else if (op == "=" || op == "==")
-			{
-				type = pc::PrimitivePredicate::TYPE_EQ;
-			}
-			else
-			{
-				type = pc::PrimitivePredicate::TYPE_NEQ;
-			}
-
-			try
-			{
-				res.vc = make_shared<pc::PrimitivePredicate>(
-						m1[6].matched, type, VersionNumber(m1[7].str()));
-			}
-			catch (InvalidVersionNumberString& e)
-			{
-				res.err = e.what();
-				res.success = false;
-				return res;
-			}
-		}
-
-		if (m1[2].matched)
-		{
-			res.arch = Architecture::from_string (m1[3].str());
-		}
-
-		return res;
-	}
-
-	res.success = false;
-	res.err = "Unknown format";
-	return res;
-}
 
 
 bool print_installation_graph(shared_ptr<Parameters> params)

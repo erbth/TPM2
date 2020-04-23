@@ -100,3 +100,37 @@ bool list_installed_packages (shared_ptr<Parameters> params)
 
 	return true;
 }
+
+
+bool show_version (std::shared_ptr<Parameters> params)
+{
+	if (params->operation_packages.empty())
+	{
+		fprintf (stderr, "No package specified.\n");
+		return false;
+	}
+
+	auto res = parse_cmd_param (*params, params->operation_packages.front());
+	if (!res.success)
+	{
+		fprintf (stderr, "Unknown package description: %s (%s)\n",
+				res.pkg.c_str(), res.err.c_str());
+		return false;
+	}
+
+	PackageDB pkgdb(params);
+
+	auto all_packages = pkgdb.get_packages_in_state (ALL_PKG_STATES);
+
+	for (auto mdata : all_packages)
+	{
+		if (mdata->name == res.name && mdata->architecture == res.arch)
+		{
+			printf ("%s\n", mdata->version.to_string().c_str());
+			return true;
+		}
+	}
+
+	printf ("---\n");
+	return true;
+}

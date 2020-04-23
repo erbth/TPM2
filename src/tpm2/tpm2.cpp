@@ -258,9 +258,21 @@ int _main(int argc, char** argv)
 							params->operation == OPERATION_REMOVE ||
 							params->operation == OPERATION_REMOVAL_GRAPH ||
 							params->operation == OPERATION_MARK_MANUAL ||
-							params->operation == OPERATION_MARK_AUTO
+							params->operation == OPERATION_MARK_AUTO ||
+							params->operation == OPERATION_SHOW_VERSION
 					   )
 					{
+						if (
+								params->operation == OPERATION_SHOW_VERSION
+							)
+						{
+							if (!params->operation_packages.empty())
+							{
+								printf ("This operation accepts only one package as argument.\n");
+								return 2;
+							}
+						}
+
 						params->operation_packages.push_back(parameter);
 					}
 					else
@@ -312,6 +324,9 @@ int _main(int argc, char** argv)
 
 	case OPERATION_LIST_INSTALLED:
 		return list_installed_packages(params) ? 0 : 1;
+
+	case OPERATION_SHOW_VERSION:
+		return show_version (params) ? 0 : 1;
 
 	case OPERATION_MARK_MANUAL:
 		return set_installation_reason (INSTALLATION_REASON_MANUAL, params) ? 0 : 1;

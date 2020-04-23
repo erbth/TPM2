@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <regex>
 #include <system_error>
 #include "utility.h"
 #include "tpm2_config.h"
@@ -15,6 +16,7 @@ extern "C" {
 
 using namespace std;
 namespace fs = std::filesystem;
+namespace pc = PackageConstraints;
 
 
 void print_target(shared_ptr<Parameters> params, bool to_stderr)
@@ -117,4 +119,78 @@ string installation_reason_to_string (char reason)
 		default:
 			return "invalid";
 	}
+}
+
+
+
+parse_cmd_param_result parse_cmd_param (const Parameters& params, const std::string& pkg)
+{
+	parse_cmd_param_result res (pkg);
+	res.success = true;
+	res.arch = params.default_architecture;
+
+	/* May be of the form name@arch>=version */
+	const regex pattern1(
+			"([^<>!=@]+)[ \t]*(@(amd64|i386))?[ \t]*((>=|<=|>|<|=|==|!=)(s:)?([^<>!=@]+))?");
+
+	smatch m1;
+	if (regex_match (pkg, m1, pattern1))
+	{
+		res.name = m1[1].str();
+		
+		if (m1[4].matched)
+		{
+			auto op = m1[5];
+
+			char type;
+
+			if (op == ">=")
+			{
+				type = pc::PrimitivePredicate::TYPE_GEQ;
+			}
+			else if (op == "<=")
+			{
+				type = pc::PrimitivePredicate::TYPE_LEQ;
+			}
+			else if (op == ">")
+			{
+				type = pc::PrimitivePredicate::TYPE_GT;
+			}
+			else if (op == "<")
+			{
+				type = pc::PrimitivePredicate::TYPE_LT;
+			}
+			else if (op == "=" || op == "==")
+			{
+				type = pc::PrimitivePredicate::TYPE_EQ;
+			}
+			else
+			{
+				type = pc::PrimitivePredicate::TYPE_NEQ;
+			}
+
+			try
+			{
+				res.vc = make_shared<pc::PrimitivePredicate>(
+						m1[6].matched, type, VersionNumber(m1[7].str()));
+			}
+			catch (InvalidVersionNumberString& e)
+			{
+				res.err = e.what();
+				res.success = false;
+				return res;
+			}
+		}
+
+		if (m1[2].matched)
+		{
+			res.arch = Architecture::from_string (m1[3].str());
+		}
+
+		return res;
+	}
+
+	res.success = false;
+	res.err = "Unknown format";
+	return res;
 }
