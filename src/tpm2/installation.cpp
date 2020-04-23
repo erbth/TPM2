@@ -1706,3 +1706,66 @@ bool ll_run_postrm (
 
 	return true;
 }
+
+
+/* Set the installation reason of a group of packages to the specified value. */
+bool set_installation_reason (char reason, std::shared_ptr<Parameters> params)
+{
+	PackageDB pkgdb (params);
+
+	/* Interpret the supplied package specifications */
+	set<pair<string, int>> pkg_ids;
+
+	for (const auto& pkg : params->operation_packages)
+	{
+		auto res = parse_cmd_param (*params, pkg);
+		if (!res.success)
+		{
+			fprintf (stderr, "Unknown package description: %s (%s)\n",
+					res.pkg.c_str(), res.err.c_str());
+			return false;
+		}
+
+		pkg_ids.emplace (make_pair(move(res.name), res.arch));
+	}
+
+	/* Find the packages that match the given descriptions */
+	vector<shared_ptr<PackageMetaData>> pkgs_to_change;
+	for (auto mdata : pkgdb.get_packages_in_state (ALL_PKG_STATES))
+	{
+		auto i = pkg_ids.find (make_pair (mdata->name, mdata->architecture));
+		if (i != pkg_ids.end())
+		{
+			if (mdata->installation_reason != reason)
+				pkgs_to_change.push_back (mdata);
+
+			pkg_ids.erase (i);
+		}
+	}
+
+	if (!pkg_ids.empty())
+	{
+		for (auto& id : pkg_ids)
+		{
+			fprintf (stderr, "Package %s@%s is not installed.\n",
+					id.first.c_str(),
+					Architecture::to_string (id.second).c_str());
+		}
+
+		return false;
+	}
+
+	/* For each package that is installed, change the installation reason if
+	 * required. */
+	for (auto mdata : pkgs_to_change)
+	{
+		printf ("ll changing installation reason of package %s@%s\n",
+				mdata->name.c_str(),
+				Architecture::to_string (mdata->architecture).c_str());
+
+		if (!ll_change_installation_reason (pkgdb, mdata, reason))
+			return false;
+	}
+
+	return true;
+}

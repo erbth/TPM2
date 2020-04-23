@@ -16,6 +16,8 @@ bool print_installation_graph(std::shared_ptr<Parameters> params);
 
 bool install_packages(std::shared_ptr<Parameters> params);
 
+bool set_installation_reason (char reason, std::shared_ptr<Parameters> params);
+
 /* This function does not only run the package's preinst script, but also test
  * if its files are already present in the system and adopt them if required.
  * And it adds the package to the package database. If moreover @param

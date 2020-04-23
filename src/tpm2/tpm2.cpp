@@ -256,7 +256,9 @@ int _main(int argc, char** argv)
 							params->operation == OPERATION_INSTALL ||
 							params->operation == OPERATION_INSTALLATION_GRAPH ||
 							params->operation == OPERATION_REMOVE ||
-							params->operation == OPERATION_REMOVAL_GRAPH
+							params->operation == OPERATION_REMOVAL_GRAPH ||
+							params->operation == OPERATION_MARK_MANUAL ||
+							params->operation == OPERATION_MARK_AUTO
 					   )
 					{
 						params->operation_packages.push_back(parameter);
@@ -310,6 +312,12 @@ int _main(int argc, char** argv)
 
 	case OPERATION_LIST_INSTALLED:
 		return list_installed_packages(params) ? 0 : 1;
+
+	case OPERATION_MARK_MANUAL:
+		return set_installation_reason (INSTALLATION_REASON_MANUAL, params) ? 0 : 1;
+
+	case OPERATION_MARK_AUTO:
+		return set_installation_reason (INSTALLATION_REASON_AUTO, params) ? 0 : 1;
 
 	default:
 		printf ("Error: this operation is not yet implemented.\n");
