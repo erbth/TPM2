@@ -70,19 +70,28 @@ bool ll_unconfigure_package (
 		StoredMaintainerScripts& sms,
 		bool change);
 
-/* If change is set to true, change semantics are applied. Then the user is
- * required to specify a file trie through @param current_trie, which must
- * contain at least the files and directories of the packages that
- * superseed/replace the given one. However every element shall be represented
- * by a file trie directory to allow for migrating from files to directories and
- * vice-versa. The vectors embedded into the file trie must contain all owners
- * of a file. */
+/* If change is set to true, change semantics are applied. @param current_trie
+ * must be a file trie, which must contain at least the files and directories of
+ * the packages that superseed/replace the given one if change semantics are
+ * used, and all directories of the packages that will finally be installed on
+ * the system. However every element shall be represented by a file trie
+ * directory to allow for migrating from files to directories and vice-versa.
+ *
+ * The vectors embedded into the file trie must contain all owners of a file
+ * that fall under one of the two conditions stated above.
+ *
+ * The files of more packages may be added as well, but if files of the trie
+ * contain references to packages that have been removed already, these files
+ * won't be removed. Therefore, files and directories of removed packages should
+ * not be in the trie. To maintain the current situation efficiently, the
+ * function removes the package's references to files and directories from the
+ * trie, and the files / directories if no references point to them anymore. */
 bool ll_rm_files (
 		std::shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
 		std::shared_ptr<PackageMetaData> mdata,
 		bool change,
-		FileTrie<std::vector<PackageMetaData*>>* current_trie = nullptr);
+		FileTrie<std::vector<PackageMetaData*>>& current_trie);
 
 bool ll_run_postrm (
 		std::shared_ptr<Parameters> params,

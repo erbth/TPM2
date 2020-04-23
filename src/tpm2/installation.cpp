@@ -2,6 +2,7 @@
  *
  * High level installation, reinstallation and upgrading of packages */
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
@@ -518,7 +519,7 @@ bool install_packages(shared_ptr<Parameters> params)
 	/* A pointer feels smoother here than an optional. */
 	unique_ptr<FileTrie<vector<PackageMetaData*>>> current_trie;
 
-	if (change_pkgs)
+	if (change_pkgs || remove_pkgs)
 	{
 		current_trie = make_unique<FileTrie<vector<PackageMetaData*>>>();
 
@@ -802,12 +803,12 @@ bool install_packages(shared_ptr<Parameters> params)
 				/* ll remove files */
 				if (mdata->state == PKG_STATE_WAIT_NEW_UNPACKED || mdata->state == PKG_STATE_RM_FILES_CHANGE)
 				{
-					if (!ll_rm_files (params, pkgdb, mdata, true, current_trie.get()))
+					if (!ll_rm_files (params, pkgdb, mdata, true, *current_trie))
 						return false;
 				}
 				else if (mdata->state == PKG_STATE_RM_FILES_BEGIN)
 				{
-					if (!ll_rm_files (params, pkgdb, mdata, false))
+					if (!ll_rm_files (params, pkgdb, mdata, false, *current_trie))
 						return false;
 				}
 
@@ -1292,8 +1293,9 @@ bool remove_packages (std::shared_ptr<Parameters> params)
 	}
 
 	/* Build the removal graph */
-	depres::RemovalGraphBranch g = depres::build_removal_graph (
-			pkgdb.get_packages_in_state (ALL_PKG_STATES));
+	auto installed_packages = pkgdb.get_packages_in_state (ALL_PKG_STATES);
+
+	depres::RemovalGraphBranch g = depres::build_removal_graph (installed_packages);
 
 	depres::reduce_to_branch_to_remove (g, pkg_ids);
 
@@ -1319,6 +1321,32 @@ bool remove_packages (std::shared_ptr<Parameters> params)
 			return false;
 		}
 	}
+
+	/* Build a trie of all directories that are currently installed on the
+	 * system. */
+	FileTrie<vector<PackageMetaData*>> current_trie;
+
+	for (auto pkg : installed_packages)
+	{
+		for (auto& file : pkgdb.get_files (pkg))
+		{
+			if (file.type == FILE_TYPE_DIRECTORY)
+			{
+				auto h = current_trie.find_directory (file.path);
+
+				if (!h)
+				{
+					current_trie.insert_directory (file.path);
+					h = current_trie.find_directory (file.path);
+				}
+
+				/* Should not be too many and spares overhead of set */
+				if (find (h->data.begin(), h->data.end(), pkg.get()) == h->data.end())
+					h->data.push_back (pkg.get());
+			}
+		}
+	}
+
 
 	/* Load stored maintainer scripts for involved packages */
 	map<std::shared_ptr<PackageMetaData>,StoredMaintainerScripts> sms_map;
@@ -1367,7 +1395,7 @@ bool remove_packages (std::shared_ptr<Parameters> params)
 
 		if (rg_node->pkg->state == PKG_STATE_RM_FILES_BEGIN)
 		{
-			if (!ll_rm_files (params, pkgdb, rg_node->pkg, false))
+			if (!ll_rm_files (params, pkgdb, rg_node->pkg, false, current_trie))
 				return false;
 		}
 
@@ -1453,7 +1481,7 @@ bool ll_rm_files (
 		PackageDB& pkgdb,
 		shared_ptr<PackageMetaData> mdata,
 		bool change,
-		FileTrie<vector<PackageMetaData*>>* current_trie)
+		FileTrie<vector<PackageMetaData*>>& current_trie)
 {
 	if (!(
 				(!change && mdata->state == PKG_STATE_RM_FILES_BEGIN) ||
@@ -1502,30 +1530,54 @@ bool ll_rm_files (
 				++iter;
 		}
 
-		/* If change semantics shall be used, filter out the files that will
-		 * belong to different packages than this one. */
-		if (change)
+		/* Remove references of this package to files in the file trie. If the
+		 * files are references by other packages and change semantics are used,
+		 * the file is removed from the list of files to delete. */
+		auto fiter = files.begin();
+		while (fiter != files.end())
 		{
-			auto fiter = files.begin();
-			while (fiter != files.end())
+			auto h = current_trie.find_directory (fiter->path);
+			if (h)
 			{
-				auto h = current_trie->find_directory (fiter->path);
-				if (h && (h->data.size() > 1 || (h->data.size() == 1 && h->data[0] != mdata.get())))
-					files.erase (fiter++);
-				else
-					fiter++;
-			}
+				auto ref = find (h->data.begin(), h->data.end(), mdata.get());
+				if (ref != h->data.end())
+					h->data.erase (ref);
 
-			auto diter = directories.begin();
-			while (diter != directories.end())
+				if (h->data.empty())
+					current_trie.remove_element (fiter->path);
+				else if (change)
+					files.erase (fiter++);
+			}
+			else
 			{
-				auto h = current_trie->find_directory (diter->path);
-				if (h && (h->data.size() > 1 || (h->data.size() == 1 && h->data[0] != mdata.get())))
-					directories.erase (diter++);
-				else
-					diter++;
+				fiter++;
 			}
 		}
+
+		/* Do the same thing for directories, but directories may always belong
+		 * to multiple packages and hence must only be removed if no other
+		 * packages reference them, even if semantics are not used. */
+		auto diter = directories.begin();
+		while (diter != directories.end())
+		{
+			auto h = current_trie.find_directory (diter->path);
+			if (h)
+			{
+				auto ref = find (h->data.begin(), h->data.end(), mdata.get());
+				if (ref != h->data.end())
+					h->data.erase (ref);
+
+				if (h->data.empty())
+					current_trie.remove_element (diter->path);
+				else
+					directories.erase (diter++);
+			}
+			else
+			{
+				diter++;
+			}
+		}
+
 
 		/* Makes sure that subdirectories come first. That is, the longer paths
 		 * must come first and hence be considered 'less'. */
