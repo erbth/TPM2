@@ -62,6 +62,8 @@ struct Parameters
 	enum operation_type operation = OPERATION_INVALID;
 	std::vector<std::string> operation_packages;
 
+	bool autoremove = false;
+
 	/* Methods */
 	bool target_is_native() const;
 

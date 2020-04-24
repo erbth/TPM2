@@ -1129,7 +1129,7 @@ bool system_state_accepted_for_install (vector<shared_ptr<PackageMetaData>> inst
 
 
 /***************************** Removing packages ******************************/
-bool print_removal_graph (shared_ptr<Parameters> params)
+bool print_removal_graph (shared_ptr<Parameters> params, bool autoremove)
 {
 	print_target (params, true);
 	PackageDB pkgdb (params);
@@ -1155,8 +1155,8 @@ bool print_removal_graph (shared_ptr<Parameters> params)
 			pkgdb.get_packages_in_state (ALL_PKG_STATES));
 
 	/* If any packages are specified, reduce it to the branch to remove */
-	if (!pkg_ids.empty())
-		depres::reduce_to_branch_to_remove (g, pkg_ids);
+	if (!pkg_ids.empty() || autoremove)
+		depres::reduce_to_branch_to_remove (g, pkg_ids, autoremove);
 
 	/* Print the removal graph */
 	/* First, enumerate all nodes. */
@@ -1254,7 +1254,7 @@ bool list_reverse_dependencies (shared_ptr<Parameters> params)
 	depres::RemovalGraphBranch g = depres::build_removal_graph (all_packages);
 
 	/* Reduce it to the branch to remove */
-	depres::reduce_to_branch_to_remove (g, pkg_ids);
+	depres::reduce_to_branch_to_remove (g, pkg_ids, false);
 
 	/* Sort print the the packages from the removal graph. */
 	vector<pair<string, int>> pkgs;
@@ -1277,7 +1277,7 @@ bool list_reverse_dependencies (shared_ptr<Parameters> params)
 }
 
 
-bool remove_packages (std::shared_ptr<Parameters> params)
+bool remove_packages (std::shared_ptr<Parameters> params, bool autoremove)
 {
 	print_target (params, false);
 	PackageDB pkgdb (params);
@@ -1298,13 +1298,59 @@ bool remove_packages (std::shared_ptr<Parameters> params)
 		pkg_ids.emplace (make_pair(move(res.name), res.arch));
 	}
 
-	/* Build the removal graph */
+
 	auto installed_packages = pkgdb.get_packages_in_state (ALL_PKG_STATES);
 
+	/* Add packages that are in a state that belongs to removing them. */
+	for (auto mdata : installed_packages)
+	{
+		if (
+				mdata->state == PKG_STATE_UNCONFIGURE_BEGIN ||
+				mdata->state == PKG_STATE_RM_FILES_BEGIN ||
+				mdata->state == PKG_STATE_POSTRM_BEGIN
+		   )
+		{
+			pkg_ids.insert (make_pair (mdata->name, mdata->architecture));
+		}
+	}
+
+	/* Build the removal graph */
 	depres::RemovalGraphBranch g = depres::build_removal_graph (installed_packages);
+	depres::reduce_to_branch_to_remove (g, pkg_ids, autoremove);
 
-	depres::reduce_to_branch_to_remove (g, pkg_ids);
+	/* If nothing has to be removed, abort here. */
+	if (g.V.empty())
+		return true;
 
+	/* Ask the user if all these packages shall be removed. */
+	printf ("The following packages will be removed:\n");
+
+	for (auto v : g.V)
+	{
+		printf ("  %s@%s:%s\n",
+				v->pkg->name.c_str(),
+				Architecture::to_string (v->pkg->architecture).c_str(),
+				v->pkg->version.to_string().c_str());
+	}
+
+	printf ("\nContinue? ");
+	if (safe_query_user_input ("Yn") != 'y')
+	{
+		printf ("User aborted.\n");
+		return false;
+	}
+
+	/* High-level remove the packages in the removal graph. */
+	return hl_remove_packages (params, pkgdb, installed_packages, g);
+}
+
+
+bool hl_remove_packages (
+		shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		vector<shared_ptr<PackageMetaData>>& installed_packages,
+		depres::RemovalGraphBranch& g)
+{
 	/* Compute an unconfigure and rmfiles order */
 	vector<depres::RemovalGraphNode*> unconfigure_order = depres::serialize_rgraph (g, false);
 	vector<depres::RemovalGraphNode*> rmfiles_order = depres::serialize_rgraph (g, true);

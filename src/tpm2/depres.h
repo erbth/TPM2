@@ -286,6 +286,11 @@ namespace depres
 		std::list<RemovalGraphNode*> pre_provided;
 		std::list<RemovalGraphNode*> provided;
 
+		/* The reverse edges of the transpose graph shall only temporarily be
+		 * populated to avoid having to maintain them up-to-date. One adjacency
+		 * list for both pre-dependencies and dependencies is enough. */
+		std::set<RemovalGraphNode*> dependencies;
+
 		/* Private data to use by algorithms etc. Must not be relied on to be
 		 * present after the function that uses them exits, however it is not
 		 * altered by the graph's members. Only by third entities. */
@@ -308,10 +313,14 @@ namespace depres
 			std::vector<std::shared_ptr<PackageMetaData>> installed_packages);
 
 	/* Sort out a branch of packages that must be removed when remove the given
-	 * set of packages. */ 
+	 * set of packages. Optionally packages that are not required by manually
+	 * installed packages after removing the requested packages and their
+	 * reverse dependencies can be included as well. To enable this behavior one
+	 * can set @param autoremove to true. */ 
 	void reduce_to_branch_to_remove (
 			RemovalGraphBranch& branch,
-			std::set<std::pair<std::string, int>>& pkg_ids);
+			std::set<std::pair<std::string, int>>& pkg_ids,
+			bool autoremove);
 
 	std::vector<RemovalGraphNode*> serialize_rgraph (
 			RemovalGraphBranch& branch,

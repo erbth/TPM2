@@ -871,52 +871,116 @@ RemovalGraphBranch build_removal_graph (vector<shared_ptr<PackageMetaData>> inst
 }
 
 
-void rtbtr_mark_node (RemovalGraphNode *node)
+void rtbtr_visit_remove (RemovalGraphNode *v)
 {
-	if (node->algo_priv == 0)
+	v->algo_priv = 1;
+
+	for (auto u : v->pre_provided)
 	{
-		node->algo_priv = 1;
+		if (u->algo_priv != 1)
+			rtbtr_visit_remove (u);
+	}
 
-		for (auto p : node->pre_provided)
-			rtbtr_mark_node (p);
-
-		for (auto p : node->provided)
-			rtbtr_mark_node (p);
+	for (auto u : v->provided)
+	{
+		if (u->algo_priv != 1)
+			rtbtr_visit_remove (u);
 	}
 }
 
-void reduce_to_branch_to_remove (RemovalGraphBranch& branch, set<pair<string,int>>& pkg_ids)
+void rtbtr_visit_autoremove (RemovalGraphNode* v)
 {
-	/* Clear all package's marks */
-	for (auto node : branch.V)
-		node->algo_priv = 0;
+	v->algo_priv = 2;
+
+	for (auto u : v->dependencies)
+	{
+		if (u->algo_priv == 0)
+			rtbtr_visit_autoremove (u);
+	}
+}
+
+void reduce_to_branch_to_remove (
+		RemovalGraphBranch& branch,
+		set<pair<string,int>>& pkg_ids,
+		bool autoremove)
+{
+	/* On the use of algo_priv here:
+	 *   * 0: unvisited
+	 *   * 1: remove
+	 *   * 2: keep */
+
+	/* Set all package's marks to unvisited in case autoremove is requested or
+	 * otherwise keep. */
+	if (autoremove)
+	{
+		for (auto v : branch.V)
+			v->algo_priv = 0;
+	}
+	else
+	{
+		for (auto v : branch.V)
+			v->algo_priv = 2;
+	}
 
 	/* Mark packages to remove */
-	for (auto node : branch.V)
+	for (auto v : branch.V)
 	{
-		if (pkg_ids.find (make_pair (node->pkg->name, node->pkg->architecture))
-				!= pkg_ids.end())
+		if (v->algo_priv != 1)
 		{
-			rtbtr_mark_node (node.get());
+			if (pkg_ids.find (make_pair (v->pkg->name, v->pkg->architecture))
+					!= pkg_ids.end())
+			{
+				rtbtr_visit_remove (v.get());
+			}
+		}
+	}
+
+	/* If autoremove is requested, mark packages to autoremove. */
+	if (autoremove)
+	{
+		/* Transpose the graph */
+		for (auto v : branch.V)
+		{
+			for (auto& u : v->pre_provided)
+				u->dependencies.insert (v.get());
+
+			for (auto& u : v->provided)
+				u->dependencies.insert (v.get());
+		}
+
+		/* Visit manually installed packages that will not be removed to mark
+		 * their dependencies with keep. */
+		for (auto v : branch.V)
+		{
+			if (v->algo_priv == 0 &&
+					v->pkg->installation_reason == INSTALLATION_REASON_MANUAL)
+			{
+				rtbtr_visit_autoremove (v.get());
+			}
+		}
+
+		/* Mark the remaining vertices for automatic removal and delete the
+		 * transposed graph. */
+		for (auto v : branch.V)
+		{
+			if (v->algo_priv == 0)
+				v->algo_priv = 1;
+
+			v->dependencies.clear();
 		}
 	}
 
 	/* Remove packages. No references need to be removed as all outgoing edges
-	 * lead to targets that need to be removed, too, and are hence still in the
-	 * graph. */
+	 * lead to targets that will be removed, too, and those will be still in the
+	 * graph, too. */
 	auto i = branch.V.begin();
 
 	while (i != branch.V.end())
 	{
-		auto next = i;
+		auto curr = i++;
 
-		/* Must be done before i is invalidated. */
-		next++;
-
-		if ((*i)->algo_priv == 0)
-			branch.V.erase (i);
-
-		i = next;
+		if ((*curr)->algo_priv == 2)
+			branch.V.erase (curr);
 	}
 }
 

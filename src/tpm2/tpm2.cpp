@@ -72,7 +72,9 @@ void print_help()
 
 "  --remove-unneeded       Remove all packages that were marked as automatically\n"
 "                          installed and are not required by other packages that\n"
-"                          are marked as manually installed\n\n"
+"                          are marked as manually installed. This argument may\n"
+"                          also be given as an option to --remove and\n"
+"                          --removal-graph.\n\n"
 
 "  --list-installed        List all installed packages and their states\n\n"
 
@@ -186,8 +188,18 @@ int _main(int argc, char** argv)
 			}
 			else if (option == "remove-unneeded")
 			{
-				params->operation = OPERATION_REMOVE_UNNEEDED;
-				state.operation = state.SPECIFIED;
+				if (state.operation == state.SPECIFIED &&
+						(params->operation == OPERATION_REMOVE ||
+						 params->operation == OPERATION_REMOVAL_GRAPH)
+					)
+				{
+					params->autoremove = true;
+				}
+				else
+				{
+					params->operation = OPERATION_REMOVE_UNNEEDED;
+					state.operation = state.SPECIFIED;
+				}
 			}
 			else if (option == "list-installed")
 			{
@@ -304,10 +316,16 @@ int _main(int argc, char** argv)
 		return print_installation_graph(params) ? 0 : 1;
 
 	case OPERATION_REMOVE:
-		return remove_packages (params) ? 0 : 1;
+		return remove_packages (params, params->autoremove) ? 0 : 1;
+
+	case OPERATION_REMOVE_UNNEEDED:
+		/* Just to be sure if the parser allowed to specify packages after
+		 * autoremove. */
+		params->operation_packages.clear();
+		return remove_packages (params, true) ? 0 : 1;
 
 	case OPERATION_REMOVAL_GRAPH:
-		return print_removal_graph (params) ? 0 : 1;
+		return print_removal_graph (params, params->autoremove) ? 0 : 1;
 
 	case OPERATION_LIST_INSTALLED:
 		return list_installed_packages(params) ? 0 : 1;

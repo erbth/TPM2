@@ -12,6 +12,11 @@
 #include "stored_maintainer_scripts.h"
 #include "file_trie.h"
 
+/* Prototypes */
+namespace depres {
+	struct RemovalGraphBranch;
+}
+
 bool print_installation_graph(std::shared_ptr<Parameters> params);
 
 bool install_packages(std::shared_ptr<Parameters> params);
@@ -76,10 +81,19 @@ bool system_state_accepted_for_install (
 
 
 /***************************** Removing packages ******************************/
-bool print_removal_graph (std::shared_ptr<Parameters> params);
+bool print_removal_graph (std::shared_ptr<Parameters> params, bool autoremove);
 bool list_reverse_dependencies (std::shared_ptr<Parameters> params);
 
-bool remove_packages (std::shared_ptr<Parameters> params);
+/* If autoremove is true, packages that are not required by manually installed
+ * packages directly or indirectly after the specified packages were removed
+ * will be removed, too. */
+bool remove_packages (std::shared_ptr<Parameters> params, bool autoremove);
+
+bool hl_remove_packages (
+		std::shared_ptr<Parameters> params,
+		PackageDB& pkgdb,
+		std::vector<std::shared_ptr<PackageMetaData>>& installed_packages,
+		depres::RemovalGraphBranch& g);
 
 bool ll_unconfigure_package (
 		std::shared_ptr<Parameters> params,
