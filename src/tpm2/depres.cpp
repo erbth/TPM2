@@ -30,9 +30,8 @@ ComputeInstallationGraphResult compute_installation_graph(
 	set<InstallationGraphNode*> active;
 
 	/* Add all installed packages to the installation graph. This does also
-	 * construct two file tries, one that will be altered while depres computes
-	 * the target configuration and one that will represent the original
-	 * situation for later use while packages are installed. */
+	 * construct a file tries, which will be altered while depres computes the
+	 * target configuration. */
 	for (auto p : installed_packages)
 	{
 		auto node = make_shared<InstallationGraphNode>(

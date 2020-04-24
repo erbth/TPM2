@@ -17,4 +17,6 @@ bool list_installed_packages (std::shared_ptr<Parameters> params);
 bool show_version (std::shared_ptr<Parameters> params);
 bool list_available (std::shared_ptr<Parameters> params);
 
-#endif /* __ PKG_TOOLS_H */
+bool show_problems (std::shared_ptr<Parameters> params);
+
+#endif /* __PKG_TOOLS_H */

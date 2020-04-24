@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <map>
+#include <utility>
 #include "pkg_tools.h"
 #include "utility.h"
 #include "package_db.h"
@@ -226,4 +228,135 @@ bool list_available (shared_ptr<Parameters> params)
 	}
 
 	return true;
+}
+
+
+bool show_problems (shared_ptr<Parameters> params)
+{
+	print_target (params, true);
+	PackageDB pkgdb (params);
+
+	bool errors_found = false;
+
+	auto all_packages = pkgdb.get_packages_in_state (ALL_PKG_STATES);
+
+	/* List problems in problematic states */
+	printf ("\nSearching for packages in invalid states ...\n");
+	for (auto mdata : all_packages)
+	{
+		if (mdata->state == PKG_STATE_CONFIGURED)
+		{
+			continue;
+		}
+		else if (mdata->state == PKG_STATE_CONFIGURE_BEGIN)
+		{
+			printf ("warning: %s@%s:%s in pre-configured state %s\n",
+					mdata->name.c_str(),
+					Architecture::to_string (mdata->architecture).c_str(),
+					mdata->version.to_string().c_str(),
+					pkg_state_to_string (mdata->state).c_str());
+
+			errors_found = true;
+		}
+		else
+		{
+			printf ("ERROR:   %s@%s:%s in unaccepting state %s\n",
+					mdata->name.c_str(),
+					Architecture::to_string (mdata->architecture).c_str(),
+					mdata->version.to_string().c_str(),
+					pkg_state_to_string (mdata->state).c_str());
+
+			errors_found = true;
+		}
+	}
+
+	/* List missing dependencies */
+	printf ("\nLocating missing dependencies ...\n");
+
+	map<tuple<string, int>, shared_ptr<PackageMetaData>> pkg_map;
+	for (auto mdata : all_packages)
+		pkg_map.insert (make_pair (make_pair (mdata->name, mdata->architecture), mdata));
+
+	for (auto mdata : all_packages)
+	{
+		/* Look if all pre-dependencies are installed and fulfill potential
+		 * version constraints. */
+		for (const auto& dep : mdata->pre_dependencies)
+		{
+			auto i = pkg_map.find (dep.identifier);
+
+			if (i == pkg_map.end())
+			{
+				printf ("Package %s@%s:%s pre-depends on non-present package %s@%s.\n",
+						mdata->name.c_str(),
+						Architecture::to_string (mdata->architecture).c_str(),
+						mdata->version.to_string().c_str(),
+						dep.get_name().c_str(),
+						Architecture::to_string (dep.get_architecture()).c_str());
+
+				errors_found = true;
+			}
+			else
+			{
+				if (dep.version_formula)
+				{
+					auto dep_mdata = i->second;
+
+					if (!dep.version_formula->fulfilled (dep_mdata->source_version, dep_mdata->version))
+					{
+						printf ("Package %s@%s:%s pre-depends on package %s@%s "
+								"but an unaccepted version is installed.\n",
+								mdata->name.c_str(),
+								Architecture::to_string (mdata->architecture).c_str(),
+								mdata->version.to_string().c_str(),
+								dep_mdata->name.c_str(),
+								Architecture::to_string (dep_mdata->architecture).c_str());
+
+						errors_found = true;
+					}
+				}
+			}
+		}
+
+		/* Look if all dependencies are installed and fulfill potential version
+		 * constraints. */
+		for (const auto& dep : mdata->dependencies)
+		{
+			auto i = pkg_map.find (dep.identifier);
+
+			if (i == pkg_map.end())
+			{
+				printf ("Package %s@%s:%s depends on non-present package %s@%s.\n",
+						mdata->name.c_str(),
+						Architecture::to_string (mdata->architecture).c_str(),
+						mdata->version.to_string().c_str(),
+						dep.get_name().c_str(),
+						Architecture::to_string (dep.get_architecture()).c_str());
+
+				errors_found = true;
+			}
+			else
+			{
+				if (dep.version_formula)
+				{
+					auto dep_mdata = i->second;
+
+					if (!dep.version_formula->fulfilled (dep_mdata->source_version, dep_mdata->version))
+					{
+						printf ("Package %s@%s:%s depends on package %s@%s but "
+								"an unaccepted version is installed.\n",
+								mdata->name.c_str(),
+								Architecture::to_string (mdata->architecture).c_str(),
+								mdata->version.to_string().c_str(),
+								dep_mdata->name.c_str(),
+								Architecture::to_string (dep_mdata->architecture).c_str());
+
+						errors_found = true;
+					}
+				}
+			}
+		}
+	}
+
+	return errors_found;
 }

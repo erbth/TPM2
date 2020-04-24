@@ -321,6 +321,9 @@ int _main(int argc, char** argv)
 	case OPERATION_LIST_AVAILABLE:
 		return list_available (params) ? 0 : 1;
 
+	case OPERATION_SHOW_PROBLEMS:
+		return show_problems (params) ? 0 : 1;
+
 	case OPERATION_MARK_MANUAL:
 		return set_installation_reason (INSTALLATION_REASON_MANUAL, params) ? 0 : 1;
 
