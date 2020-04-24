@@ -30,21 +30,30 @@ bool set_installation_reason (char reason, std::shared_ptr<Parameters> params);
  * needs to be specified and must contain at least the files of the packages to
  * superseed/replace. These will not be checked for existance and no adoption
  * will be used on them. In that case, the trie is augmented just like if it was
- * specified without change semantics. */
+ * specified without change semantics.
+ *
+ * The package meta data of @param pp is not used as the package may already be
+ * installed and have a different meta data associated with it. */
 bool ll_run_preinst (
 		std::shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
+		std::shared_ptr<PackageMetaData> mdata,
 		std::shared_ptr<ProvidedPackage> pp,
 		bool change,
 		FileTrie<std::vector<PackageMetaData*>>* current_trie = nullptr);
 
+/* The package meta data of @param pp is not used as the package may already be
+ * installed and have a different meta data associated with it. */
 bool ll_unpack (
 		std::shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
+		std::shared_ptr<PackageMetaData> mdata,
 		std::shared_ptr<ProvidedPackage> pp,
 		bool change);
 
-/* Only on of @param pp and @param sms needs to be present. */
+/* Only on of @param pp and @param sms needs to be present. The package meta
+ * data of @param is not used as the package is installed already and may have a
+ * different meta data associated with it. */
 bool ll_configure_package (
 		std::shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
@@ -58,6 +67,12 @@ bool ll_change_installation_reason (
 		PackageDB& pkgdb,
 		std::shared_ptr<PackageMetaData> mdata,
 		char reason);
+
+
+/* This function ensured that the system is in an accepted state for package
+ * installation. It prints errors directly to stderr. */
+bool system_state_accepted_for_install (
+		std::vector<std::shared_ptr<PackageMetaData>> installed_packages);
 
 
 /***************************** Removing packages ******************************/

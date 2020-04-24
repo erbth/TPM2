@@ -48,4 +48,6 @@ struct parse_cmd_param_result
 
 parse_cmd_param_result parse_cmd_param (const Parameters& params, const std::string& pkg);
 
+std::string pkg_state_to_string (int state);
+
 #endif /* __UTILITY_H */

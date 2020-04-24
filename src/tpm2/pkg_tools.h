@@ -10,8 +10,6 @@
 #include <string>
 #include "parameters.h"
 
-std::string pkg_state_to_string (int state);
-
 bool list_installed_packages (std::shared_ptr<Parameters> params);
 
 bool show_version (std::shared_ptr<Parameters> params);

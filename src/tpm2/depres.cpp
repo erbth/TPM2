@@ -44,6 +44,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 		node->sms->clear_buffers();
 
 		g.add_node(node);
+		active.insert (node.get());
 
 		auto files = pkgdb.get_files (p);
 		for (auto& file : files)
@@ -92,11 +93,16 @@ ComputeInstallationGraphResult compute_installation_graph(
 
 			if (id_node == g.V.end())
 			{
-				return ComputeInstallationGraphResult(
-						ComputeInstallationGraphResult::INVALID_CURRENT_CONFIG,
-						"Pre-dependency " + d.get_name() + "@" +
-						Architecture::to_string(d.get_architecture()) +
-						" not installed.");
+				id_node = g.V.insert (
+						make_pair (
+							d.identifier,
+							make_shared<InstallationGraphNode>(
+								d.get_name(), d.get_architecture()
+							)
+						)
+					).first;
+
+				active.insert (id_node->second.get());
 			}
 
 			auto d_node = id_node->second;
@@ -105,7 +111,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 			node->pre_dependencies.push_back(d_node.get());
 			d_node->pre_dependees.insert(node.get());
 
-			/* Add version constraining formulae */
+			/* Add version constraining formula */
 			d_node->pre_constraints.insert({node.get(), d.version_formula});
 		}
 
@@ -116,11 +122,16 @@ ComputeInstallationGraphResult compute_installation_graph(
 
 			if (id_node == g.V.end())
 			{
-				return ComputeInstallationGraphResult(
-						ComputeInstallationGraphResult::INVALID_CURRENT_CONFIG,
-						"Dependency " + d.get_name() + "@" +
-						Architecture::to_string(d.get_architecture()) +
-						" not installed.");
+				id_node = g.V.insert (
+						make_pair (
+							d.identifier,
+							make_shared<InstallationGraphNode>(
+								d.get_name(), d.get_architecture()
+							)
+						)
+					).first;
+
+				active.insert (id_node->second.get());
 			}
 
 			auto d_node = id_node->second;
@@ -129,7 +140,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 			node->dependencies.push_back(d_node.get());
 			d_node->dependees.insert(node.get());
 
-			/* Add version constraining formulae */
+			/* Add version constraining formula */
 			d_node->constraints.insert({node.get(), d.version_formula});
 		}
 	}

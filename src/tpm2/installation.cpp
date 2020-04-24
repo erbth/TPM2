@@ -153,19 +153,8 @@ bool install_packages(shared_ptr<Parameters> params)
 		pkgdb.get_packages_in_state (ALL_PKG_STATES);
 
 	/* Ensure that the system is in a clean state */
-	for (auto mdata : installed_packages)
-	{
-		if (mdata->state != PKG_STATE_CONFIGURED && mdata->state != PKG_STATE_CONFIGURE_BEGIN)
-		{
-			fprintf (stderr, "System is not in a clean state. Package "
-					"%s@%s:%s is not in an accepted state.\n",
-					mdata->name.c_str(),
-					Architecture::to_string (mdata->architecture).c_str(),
-					mdata->version.to_string().c_str());
-
-			return false;
-		}
-	}
+	if (!system_state_accepted_for_install (installed_packages))
+		return false;
 
 	/* Find packages the requested packages in a repo and resolve their
 	 * dependencies recursively. I have the depres module for this task. */
@@ -459,8 +448,8 @@ bool install_packages(shared_ptr<Parameters> params)
 	for (auto op : unpack_order)
 	{
 		if (
-				op.operation == depres::pkg_operation::INSTALL_NEW &&
-				op.operation == depres::pkg_operation::CHANGE_INSTALL &&
+				op.operation == depres::pkg_operation::INSTALL_NEW ||
+				op.operation == depres::pkg_operation::CHANGE_INSTALL ||
 				op.operation == depres::pkg_operation::REPLACE_INSTALL)
 		{
 			depres::InstallationGraphNode* ig_node = op.ig_node;
@@ -631,12 +620,12 @@ bool install_packages(shared_ptr<Parameters> params)
 			if ((change && mdata->state == PKG_STATE_WANTED) ||
 					(mdata->state == PKG_STATE_PREINST_CHANGE))
 			{
-				if (!ll_run_preinst (params, pkgdb, pp, true, current_trie.get()))
+				if (!ll_run_preinst (params, pkgdb, mdata, pp, true, current_trie.get()))
 					return false;
 			}
 			else if (mdata->state == PKG_STATE_WANTED || mdata->state == PKG_STATE_PREINST_BEGIN)
 			{
-				if (!ll_run_preinst (params, pkgdb, pp, false, current_trie.get()))
+				if (!ll_run_preinst (params, pkgdb, mdata, pp, false, current_trie.get()))
 					return false;
 			}
 
@@ -655,12 +644,12 @@ bool install_packages(shared_ptr<Parameters> params)
 			/* ll unpack */
 			if (mdata->state == PKG_STATE_UNPACK_CHANGE)
 			{
-				if (!ll_unpack (params, pkgdb, pp, true))
+				if (!ll_unpack (params, pkgdb, mdata, pp, true))
 					return false;
 			}
 			else if (mdata->state == PKG_STATE_UNPACK_BEGIN)
 			{
-				if (!ll_unpack (params, pkgdb, pp, false))
+				if (!ll_unpack (params, pkgdb, mdata, pp, false))
 					return false;
 			}
 					
@@ -826,12 +815,11 @@ bool install_packages(shared_ptr<Parameters> params)
 bool ll_run_preinst (
 		shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
+		shared_ptr<PackageMetaData> mdata,
 		shared_ptr<ProvidedPackage> pp,
 		bool change,
 		FileTrie<vector<PackageMetaData*>>* current_trie)
 {
-	auto mdata = pp->get_mdata();
-
 	if (!(
 				(mdata->state == PKG_STATE_WANTED) ||
 				(!change && mdata->state == PKG_STATE_PREINST_BEGIN) ||
@@ -980,11 +968,10 @@ bool ll_run_preinst (
 bool ll_unpack (
 		shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
+		shared_ptr<PackageMetaData> mdata,
 		shared_ptr<ProvidedPackage> pp,
 		bool change)
 {
-	auto mdata = pp->get_mdata ();
-
 	if (!(
 				(!change && mdata->state == PKG_STATE_UNPACK_BEGIN) ||
 				(change && mdata->state == PKG_STATE_UNPACK_CHANGE)))
@@ -1111,6 +1098,33 @@ bool ll_change_installation_reason (
 	}
 
 	return true;
+}
+
+
+bool system_state_accepted_for_install (vector<shared_ptr<PackageMetaData>> installed_packages)
+{
+	bool errors_found = false;
+
+	for (auto mdata : installed_packages)
+	{
+		if (
+				mdata->state != PKG_STATE_WANTED &&
+				mdata->state != PKG_STATE_PREINST_BEGIN &&
+				mdata->state != PKG_STATE_UNPACK_BEGIN &&
+				mdata->state != PKG_STATE_CONFIGURE_BEGIN &&
+				mdata->state != PKG_STATE_CONFIGURED)
+		{
+			fprintf (stderr, "System is not in a clean state. Package "
+					"%s@%s:%s is not in an accepted state.\n",
+					mdata->name.c_str(),
+					Architecture::to_string (mdata->architecture).c_str(),
+					mdata->version.to_string().c_str());
+
+			errors_found = true;
+		}
+	}
+
+	return !errors_found;
 }
 
 
