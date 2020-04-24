@@ -55,10 +55,8 @@ void print_help()
 
 "  --install               Install or uprade the specified packages\n\n"
 
-"  --reinstall             Like install but reinstalls the specified packages\n"
-"                          even if the same version is already installed\n\n"
-
-"  --policy                Show the installed and available versions of name\n\n"
+"  --list-available        Show the installed and available versions of a\n"
+"                          package\n\n"
 
 "  --show-version          Print a package's version number or `---' if it is\n"
 "                          not installed\n\n"
@@ -81,10 +79,6 @@ void print_help()
 "  --show-problems         Show all problems with the current installation\n"
 "                          (i.e. halfly installed packages after an interruption\n"
 "                          or missing dependencies)\n\n"
-
-"  --recover               Recover from a dirty state by deleting all packages\n"
-"                          that are in a dirty state (always possible due to\n"
-"                          atomic write operations to status\n\n"
 
 "  --installation-graph    Print the dependency graph in the dot format; If\n"
 "                          packages are specified, they are added to the graph.\n\n"
@@ -170,14 +164,9 @@ int _main(int argc, char** argv)
 				params->operation = OPERATION_INSTALL;
 				state.operation = state.SPECIFIED;
 			}
-			else if (option == "reinstall")
+			else if (option == "list-available")
 			{
-				params->operation = OPERATION_REINSTALL;
-				state.operation = state.SPECIFIED;
-			}
-			else if (option == "policy")
-			{
-				params->operation = OPERATION_POLICY;
+				params->operation = OPERATION_LIST_AVAILABLE;
 				state.operation = state.SPECIFIED;
 			}
 			else if (option == "show-version")
@@ -208,11 +197,6 @@ int _main(int argc, char** argv)
 			else if (option == "show-problems")
 			{
 				params->operation = OPERATION_SHOW_PROBLEMS;
-				state.operation = state.SPECIFIED;
-			}
-			else if (option == "recover")
-			{
-				params->operation = OPERATION_RECOVER;
 				state.operation = state.SPECIFIED;
 			}
 			else if (option == "installation-graph")
@@ -260,11 +244,13 @@ int _main(int argc, char** argv)
 							params->operation == OPERATION_MARK_MANUAL ||
 							params->operation == OPERATION_MARK_AUTO ||
 							params->operation == OPERATION_SHOW_VERSION ||
-							params->operation == OPERATION_REVERSE_DEPENDENCIES
+							params->operation == OPERATION_REVERSE_DEPENDENCIES ||
+							params->operation == OPERATION_LIST_AVAILABLE
 					   )
 					{
 						if (
-								params->operation == OPERATION_SHOW_VERSION
+								params->operation == OPERATION_SHOW_VERSION ||
+								params->operation == OPERATION_LIST_AVAILABLE
 							)
 						{
 							if (!params->operation_packages.empty())
@@ -331,6 +317,9 @@ int _main(int argc, char** argv)
 
 	case OPERATION_SHOW_VERSION:
 		return show_version (params) ? 0 : 1;
+
+	case OPERATION_LIST_AVAILABLE:
+		return list_available (params) ? 0 : 1;
 
 	case OPERATION_MARK_MANUAL:
 		return set_installation_reason (INSTALLATION_REASON_MANUAL, params) ? 0 : 1;

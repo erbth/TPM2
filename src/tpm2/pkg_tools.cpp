@@ -1,7 +1,9 @@
+#include <algorithm>
 #include "pkg_tools.h"
 #include "utility.h"
 #include "package_db.h"
 #include "architecture.h"
+#include "package_provider.h"
 
 using namespace std;
 
@@ -133,5 +135,95 @@ bool show_version (shared_ptr<Parameters> params)
 	}
 
 	printf ("---\n");
+	return true;
+}
+
+
+bool list_available (shared_ptr<Parameters> params)
+{
+	print_target (params, true);
+	if (params->operation_packages.empty())
+	{
+		fprintf (stderr, "No package specified.\n");
+		return false;
+	}
+
+	auto res = parse_cmd_param (*params, params->operation_packages.front());
+	if (!res.success)
+	{
+		fprintf (stderr, "Unknown package description: %s (%s)\n",
+				res.pkg.c_str(), res.err.c_str());
+		return false;
+	}
+
+	/* Search for available versions */
+	auto pprov = PackageProvider::create (params);
+	auto available_versions = pprov->list_package_versions (res.name, res.arch);
+
+	/* Search for the installed version */
+	PackageDB pkgdb(params);
+
+	auto all_packages = pkgdb.get_packages_in_state (ALL_PKG_STATES);
+	shared_ptr<PackageMetaData> installed_version;
+
+	for (auto mdata : all_packages)
+	{
+		if (mdata->name == res.name && mdata->architecture == res.arch)
+		{
+			installed_version = mdata;
+			break;
+		}
+	}
+
+	if (installed_version)
+	{
+		printf ("Installed: %s (%s)\n",
+				installed_version->version.to_string().c_str(),
+				installed_version->source_version.to_string().c_str());
+	}
+	else
+	{
+		printf ("Installed: ---\n");
+	}
+
+	printf ("Available versions:\n");
+
+
+	vector<shared_ptr<PackageMetaData>> available_mdata;
+	for (auto v : available_versions)
+	{
+		auto pp = pprov->get_package (res.name, res.arch, v);
+		if (!pp)
+		{
+			fprintf (stderr, "Failed to get package version %s.\n", v.to_string().c_str());
+			continue;
+		}
+
+		available_mdata.push_back (pp->get_mdata());
+	}
+
+	sort (available_mdata.begin(), available_mdata.end(), [](
+				shared_ptr<PackageMetaData> a, shared_ptr<PackageMetaData> b) {
+					if (a->source_version > b->source_version)
+						return true;
+
+					return a->version > b->version;
+				});
+
+	for (auto mdata : available_mdata)
+	{
+		/* Filter those versions out that don't meet version constraints, if the
+		 * user specified them. */
+		if (res.vc)
+		{
+			if (!res.vc->fulfilled (mdata->source_version, mdata->version))
+				continue;
+		}
+
+		printf ("    %s (%s)\n",
+				mdata->version.to_string().c_str(),
+				mdata->source_version.to_string().c_str());
+	}
+
 	return true;
 }
