@@ -55,6 +55,12 @@ void print_help()
 
 "  --install               Install or uprade the specified packages\n\n"
 
+"  --adopt-all             Adopt all files without asking\n\n"
+
+"  --assume-yes            Do not ask for confirmation if the operation shall\n"
+"                          be performed on the packages. However this does not\n"
+"                          disable the prompts for adopting files.\n\n"
+
 "  --list-available        Show the installed and available versions of a\n"
 "                          package\n\n"
 
@@ -160,6 +166,14 @@ int _main(int argc, char** argv)
 					printf("Only one target may be specified.\n");
 					return 2;
 				}
+			}
+			else if (option == "adopt-all")
+			{
+				params->adopt_all = true;
+			}
+			else if (option == "assume-yes")
+			{
+				params->assume_yes = true;
 			}
 			else if (option == "install")
 			{

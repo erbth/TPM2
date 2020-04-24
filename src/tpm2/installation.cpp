@@ -404,12 +404,15 @@ bool install_packages(shared_ptr<Parameters> params)
 
 		if (remove_pkgs || change_pkgs || !to_install.empty())
 		{
-			printf ("Continue? ");
-			auto c = safe_query_user_input ("Yn");
-			if (c != 'y')
+			if (!params->assume_yes)
 			{
-				printf ("User aborted.\n");
-				return false;
+				printf ("Continue? ");
+				auto c = safe_query_user_input ("Yn");
+				if (c != 'y')
+				{
+					printf ("User aborted.\n");
+					return false;
+				}
 			}
 		}
 	}
@@ -871,13 +874,17 @@ bool ll_run_preinst (
 					first = false;
 				}
 
-				printf ("File \"%s\" differs from the one in the package: %sAdopt it anyway? ",
+				printf ("File \"%s\" differs from the one in the package: %s",
 						file.path.c_str(), ss.str().c_str());
 
-				auto c = safe_query_user_input ("yN");
+				if (!params->adopt_all)
+				{
+					printf ("Adopt it anyway? ");
 
-				if (c != 'y')
-					throw gp_exception ("User aborted.");
+					auto c = safe_query_user_input ("yN");
+					if (c != 'y')
+						throw gp_exception ("User aborted.");
+				}
 
 				printf ("Adopting \"%s\", which differs.\n", file.path.c_str());
 			}
@@ -1333,11 +1340,14 @@ bool remove_packages (std::shared_ptr<Parameters> params, bool autoremove)
 				v->pkg->version.to_string().c_str());
 	}
 
-	printf ("\nContinue? ");
-	if (safe_query_user_input ("Yn") != 'y')
+	if (!params->assume_yes)
 	{
-		printf ("User aborted.\n");
-		return false;
+		printf ("\nContinue? ");
+		if (safe_query_user_input ("Yn") != 'y')
+		{
+			printf ("User aborted.\n");
+			return false;
+		}
 	}
 
 	/* High-level remove the packages in the removal graph. */

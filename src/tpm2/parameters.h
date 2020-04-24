@@ -64,6 +64,10 @@ struct Parameters
 
 	bool autoremove = false;
 
+	/* Disable prompts */
+	bool assume_yes = false;
+	bool adopt_all = false;
+
 	/* Methods */
 	bool target_is_native() const;
 
