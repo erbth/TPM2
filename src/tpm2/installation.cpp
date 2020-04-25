@@ -343,7 +343,7 @@ bool install_packages(shared_ptr<Parameters> params)
 	if (remove_pkgs || change_pkgs)
 	{
 		vector<pair<const string,const int>> to_remove;
-		vector<pair<const string,const int>> to_change;
+		set<pair<const string,const int>> to_change;
 		vector<pair<const string,const int>> to_install;
 
 		for (auto& op : unpack_order)
@@ -365,13 +365,13 @@ bool install_packages(shared_ptr<Parameters> params)
 					break;
 
 				case depres::pkg_operation::CHANGE_REMOVE:
-					to_change.push_back (make_pair (
+					to_change.insert (make_pair (
 								op.pkg->name,
 								op.pkg->architecture));
 					break;
 
 				case depres::pkg_operation::CHANGE_INSTALL:
-					to_change.push_back (make_pair (
+					to_change.insert (make_pair (
 								op.ig_node->chosen_version->name,
 								op.ig_node->chosen_version->architecture));
 					break;

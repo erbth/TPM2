@@ -22,7 +22,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 			>
 		> new_packages)
 {
-	/* The installation graph with a file trie to efficientry test for
+	/* The installation graph with a file trie to efficiently test for
 	 * conflicting packages. */
 	InstallationGraph g;
 
@@ -44,7 +44,6 @@ ComputeInstallationGraphResult compute_installation_graph(
 		node->sms->clear_buffers();
 
 		g.add_node(node);
-		active.insert (node.get());
 
 		auto files = pkgdb.get_files (p);
 		for (auto& file : files)
@@ -736,6 +735,34 @@ compute_operations_result compute_operations (
 			}
 		}
 
+		/* If the package will be upgraded, an edge that indicates a conflict
+		 * must be added even if the two versions do not collide as only one
+		 * version of a package might be installed in an accepted state (i.e.
+		 * configured) at a time. */
+		auto new_i = igraph.V.find (make_pair (pkg->name, pkg->architecture));
+		if (new_i != igraph.V.end())
+		{
+			auto v = new_i->second;
+
+			/* Should not happen, but be safe. */
+			if (v->algo_priv == -1)
+			{
+				throw gp_exception ("INTERNAL ERROR: depress::compute_operations: "
+						"Conflict with a newer version that is not in B.");
+			}
+
+			if (find (
+						op.involved_ig_nodes.begin(),
+						op.involved_ig_nodes.end(),
+						v.get()) == op.involved_ig_nodes.end())
+			{
+				op.involved_ig_nodes.push_back (v.get());
+
+				/* Add reverse edge */
+				result.B[v->algo_priv].involved_packages.push_back (pkg);
+			}
+		}
+
 		result.A.push_back (move (op));
 	}
 
@@ -1131,65 +1158,82 @@ vector<RemovalGraphNode*> serialize_rgraph (
 	/* Run Tarjan's algorithm */
 	int cnt_sccs = find_scc (cnt_nodes, nodes.get());
 
-	/* Construct the transposed of the transposed contracted graph, thus the
-	 * 'normal' graph. First, it's important to transpose it such that
-	 * traversing a forward edge goes to a package that can be removed next. To
-	 * compute a topological order with the used algorithm the graph needs to be
-	 * reversed again. */
+	/* If a start node is specified, mark all nodes that are reachable from it.
+	 * All other nodes must not be part of the contracted graph H. Otherwise
+	 * mark all nodes s.t. they are included in H. */
+	if (start_node)
+	{
+		/* First, clear all marks and find the start node */
+		RemovalGraphNode* rg_start = nullptr;
+		for (auto v : branch.V)
+		{
+			v->algo_priv = 0;
+
+			if (v->pkg == start_node)
+				rg_start = v.get();
+		}
+
+		/* Find all descendants using DFS */
+		vector<RemovalGraphNode*> stack;
+		stack.push_back (rg_start);
+
+		while (stack.size() > 0)
+		{
+			auto v = stack.back();
+			stack.pop_back();
+
+			v->algo_priv = 1;
+
+			for (auto u : v->pre_provided)
+			{
+				if (!u->algo_priv)
+					stack.push_back (u);
+			}
+
+			for (auto u : v->provided)
+			{
+				if (!u->algo_priv)
+					stack.push_back (u);
+			}
+		}
+	}
+	else
+	{
+		for (auto v : branch.V)
+			v->algo_priv = 1;
+	}
+
+	/* Contract the SCCs and transpose the contracted graph on the fly. In the
+	 * transposed graph edges can be traversed in forward direction to obtion a
+	 * topological order that allows for removing packages not before all
+	 * descendents are removed. */
 	unique_ptr<contracted_rg_node[]> H = unique_ptr<contracted_rg_node[]> (new contracted_rg_node[cnt_sccs]);
 
 	for (int v = 0; v < cnt_nodes; v++)
 	{
+		if (!((RemovalGraphNode*) nodes[v].data)->algo_priv)
+			continue;
+
 		H[nodes[v].SCC].original_nodes.push_back ((RemovalGraphNode*) nodes[v].data);
 
 		for (int u : nodes[v].children)
 		{
 			if (nodes[v].SCC != nodes[u].SCC)
 			{
-				H[nodes[v].SCC].children.insert(nodes[u].SCC);
-				H[nodes[u].SCC].unvisited_parents.insert (nodes[v].SCC);
+				H[nodes[u].SCC].children.insert(nodes[v].SCC);
+				H[nodes[v].SCC].unvisited_parents.insert (nodes[u].SCC);
 			}
 		}
 	}
 
-	/* Traverse the contracted graph using a version of Kahn's algorithm for the
-	 * transposed graph. */
+	/* Compute a topological order using Kahn's algorithm. */
 	vector<RemovalGraphNode*> serialized;
 	vector<int> S;
 
-	/* If a start node is specified, start traversal only there. That does
-	 * essentially not cover its ancestors (except if they are descendants, too,
-	 * i.e. the start node is part of a cycle). */
-	if (start_node)
+	for (int v = 0; v < cnt_sccs; v++)
 	{
-		int v = 0;
-		bool found = false;
-
-		for (; v < cnt_sccs; v++)
-		{
-			for (auto rg_node : H[v].original_nodes)
-			{
-				if (rg_node->pkg == start_node)
-				{
-					found = true;
-					break;
-				}
-			}
-
-			if (found)
-				break;
-		}
-
-		if (found)
+		if (H[v].unvisited_parents.empty())
 			S.push_back (v);
-	}
-	else
-	{
-		for (int v = 0; v < cnt_sccs; v++)
-		{
-			if (H[v].unvisited_parents.empty())
-				S.push_back (v);
-		}
 	}
 
 	/* Kahn's algorithm on the transposed graph */
@@ -1209,8 +1253,6 @@ vector<RemovalGraphNode*> serialize_rgraph (
 				S.push_back (u);
 		}
 	}
-
-	reverse (serialized.begin(), serialized.end());
 
 	return serialized;
 }

@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.1)
 
 project(TPM2 CXX)
 
-set(TPM2_VERSION_MAJOR 0)
-set(TPM2_VERSION_MINOR 1)
+set(TPM2_VERSION_MAJOR 2)
+set(TPM2_VERSION_MINOR 0)
 set(TPM2_VERSION_PATCH 0)
 
 # Options
