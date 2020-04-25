@@ -30,7 +30,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 	set<InstallationGraphNode*> active;
 
 	/* Add all installed packages to the installation graph. This does also
-	 * construct a file tries, which will be altered while depres computes the
+	 * construct a file trie, which will be altered while depres computes the
 	 * target configuration. */
 	for (auto p : installed_packages)
 	{
@@ -58,15 +58,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 				FileTrieNodeHandle<vector<PackageMetaData*>> h;
 				h = g.file_trie.find_file (file.path);
 
-				if (h)
-				{
-					return ComputeInstallationGraphResult(
-							ComputeInstallationGraphResult::INVALID_CURRENT_CONFIG,
-							"Conflicting package " + p->name + "@" +
-							Architecture::to_string(p->architecture) +
-							" currently installed.");
-				}
-				else
+				if (!h)
 				{
 					g.file_trie.insert_file (file.path);
 					h = g.file_trie.find_file (file.path);
@@ -261,6 +253,8 @@ ComputeInstallationGraphResult compute_installation_graph(
 
 		/* Only change something if it is a different package */
 		auto mdata = provpkg->get_mdata();
+		mdata->state = PKG_STATE_INVALID;
+
 		auto& old_mdata = pnode->chosen_version;
 
 		/* A package can be uniquely identified by it's binary version number */
@@ -269,8 +263,9 @@ ComputeInstallationGraphResult compute_installation_graph(
 			/* Remove old files */
 			for (auto& h : pnode->file_node_handles)
 			{
-				/* If we have entries in the file trie that mus havae come from
-				 * somewhere. Hence this node must have a chosen version. */
+				/* If we have entries in the file trie, these must have come
+				 * from somewhere. Hence this node must have a chosen version.
+				 * */
 				auto i = find (h->data.begin(), h->data.end(), old_mdata.get());
 				h->data.erase (i);
 
@@ -286,29 +281,23 @@ ComputeInstallationGraphResult compute_installation_graph(
 			{
 				for (auto &d : pnode->pre_dependencies)
 				{
-					d->pre_constraints.erase(d);
-					d->pre_dependees.erase (d);
+					d->pre_constraints.erase(pnode);
+					d->pre_dependees.erase (pnode);
 				}
 
 				pnode->pre_dependencies.clear();
 
 				for (auto &d : pnode->dependencies)
 				{
-					d->constraints.erase(d);
-					d->dependees.erase (d);
+					d->constraints.erase(pnode);
+					d->dependees.erase (pnode);
 				}
 
 				pnode->dependencies.clear();
 			}
 
 
-			/* Check if the new version would conflict. I do this after choosing
-			 * a version to make the choice independent from that; i.e. to not
-			 * install an older version just because it does not conflict
-			 * (usually not what the user wants and if so, she can specify this
-			 * manually).
-			 *
-			 * For now, abort when a conflicting package would be installed. */
+			/* Add new files */
 			for (auto& file : *provpkg->get_files ())
 			{
 				if (file.type != FILE_TYPE_DIRECTORY)
@@ -316,15 +305,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 					FileTrieNodeHandle<vector<PackageMetaData*>> h;
 					h = g.file_trie.find_file (file.path);
 
-					if (h)
-					{
-						return ComputeInstallationGraphResult (
-								ComputeInstallationGraphResult::NOT_FULFILLABLE,
-								"Package " + mdata->name + "@" +
-								Architecture::to_string (mdata->architecture) + ":" +
-								mdata->version.to_string() + " would conflict with other packages.");
-					}
-					else
+					if (!h)
 					{
 						g.file_trie.insert_file (file.path);
 						h = g.file_trie.find_file (file.path);
@@ -400,7 +381,137 @@ ComputeInstallationGraphResult compute_installation_graph(
 		}
 	}
 
+
+	/* Remove conflicting packages */
+	/* First, build a set of wanted packages */
+	set<pair<const string, int>> wanted_packages;
+	for (auto& np : new_packages)
+		wanted_packages.insert (make_pair (np.first.first, np.first.second));
+
+	/* Actually remove packages */
+	for (auto iv = g.V.begin(); iv != g.V.end();)
+	{
+		auto v = iv->second;
+		bool next_v_selected = false;
+
+		for (auto h : v->file_node_handles)
+		{
+			if (h->data.size() > 1)
+			{
+				/* Conflict. Find out which package to keep and remove the
+				 * others. */
+				PackageMetaData* pkg_to_keep;
+
+				for (auto mdata : h->data)
+				{
+					pkg_to_keep = mdata;
+
+					if (
+							mdata->state == PKG_STATE_INVALID ||
+							mdata->state == PKG_STATE_PREINST_CHANGE ||
+							mdata->state == PKG_STATE_UNPACK_CHANGE ||
+							mdata->state == PKG_STATE_WAIT_OLD_REMOVED ||
+							mdata->state == PKG_STATE_CONFIGURE_CHANGE
+							)
+					{
+						break;
+					}
+				}
+
+				/* The vector will be altered. Hence we need a copy of it. */
+				vector<PackageMetaData*> to_remove;
+				to_remove.reserve (h->data.size());
+
+				for (auto mdata : h->data)
+					if (mdata != pkg_to_keep)
+						to_remove.push_back (mdata);
+
+				/* Remove the packages that shall not be kept. */
+				auto current_node_key = iv->first;
+
+				for (auto mdata : to_remove)
+				{
+					auto res = cig_remove_node (g, mdata, wanted_packages);
+					if (!res.success)
+					{
+						return ComputeInstallationGraphResult (
+								ComputeInstallationGraphResult::NOT_FULFILLABLE,
+								res.error);
+					}
+				}
+
+				/* Update the iterator and continue the loop over packages. */
+				auto iv2 = g.V.lower_bound (current_node_key);
+
+				if (iv2 != iv)
+				{
+					next_v_selected = true;
+					iv = iv2;
+					break;
+				}
+			}
+		}
+
+		if (!next_v_selected)
+			++iv;
+	}
+
 	return ComputeInstallationGraphResult(g);
+}
+
+CIGRemoveNodeResult cig_remove_node (
+		InstallationGraph& g,
+		PackageMetaData* mdata,
+		set<pair<const string, int>> wanted_packages)
+{
+	list<InstallationGraphNode*> to_remove;
+
+	to_remove.push_back (g.V.find (make_pair (mdata->name, mdata->architecture))->second.get());
+
+	for (auto jv = to_remove.begin(); jv != to_remove.end();)
+	{
+		auto v = *jv;
+
+		/* Check if the node is allowed to be removed and if yes, remove it.
+		 * Otherwise return an error message. */
+		if (wanted_packages.find (make_pair (v->name, v->architecture)) != wanted_packages.end())
+		{
+			return CIGRemoveNodeResult ("Invalid configuration: "
+					+ v->name + "@" + Architecture::to_string (v->architecture) +
+					" cannot be installed due to conflicts.");
+		}
+
+		/* Add the dependees to the list of packages to remove. Their backwards
+		 * edges can stay in place as the whole node will be removed before this
+		 * function returns and this function does not use the
+		 * installation-graph-edges. */
+		for (auto u : v->pre_dependees)
+			to_remove.push_back (u);
+
+		for (auto u : v->dependees)
+			to_remove.push_back (u);
+
+		/* Remove the node's files */
+		for (auto& h : v->file_node_handles)
+		{
+			/* If we have entries in the file trie, these must have come
+			 * from somewhere. Hence this node must have a chosen version.
+			 * */
+			auto i = find (h->data.begin(), h->data.end(), v->chosen_version.get());
+			h->data.erase (i);
+
+			if (h->data.empty())
+				g.file_trie.remove_element (h->get_path());
+		}
+
+		/* Remove the node from the graph */
+		g.V.erase (make_pair (v->name, v->architecture));
+
+		/* Process the next node */
+		to_remove.erase (jv++);
+	}
+
+	return CIGRemoveNodeResult();
 }
 
 
@@ -986,23 +1097,6 @@ void reduce_to_branch_to_remove (
 
 
 /* To serialize a removal graph */
-void visit (contracted_rg_node H[], vector<RemovalGraphNode*>& serialized, int v)
-{
-	/* There are a more sophisticated approaches for removing one SCC ...
-	 */
-	for (RemovalGraphNode *rg_node : H[v].original_nodes)
-		serialized.push_back (rg_node);
-
-	for (int w : H[v].children)
-	{
-		H[w].unvisited_parents.erase (v);
-		
-		if (H[w].unvisited_parents.size() == 0)
-			visit (H, serialized, w);
-	}
-}
-
-
 vector<RemovalGraphNode*> serialize_rgraph (
 		RemovalGraphBranch& branch, bool pre_deps, shared_ptr<PackageMetaData> start_node)
 {
@@ -1037,9 +1131,11 @@ vector<RemovalGraphNode*> serialize_rgraph (
 	/* Run Tarjan's algorithm */
 	int cnt_sccs = find_scc (cnt_nodes, nodes.get());
 
-	/* Construct the transposed contracted graph. It's important to transpose it
-	 * such that traversing a forward edge goes to a package that can be removed
-	 * next. */
+	/* Construct the transposed of the transposed contracted graph, thus the
+	 * 'normal' graph. First, it's important to transpose it such that
+	 * traversing a forward edge goes to a package that can be removed next. To
+	 * compute a topological order with the used algorithm the graph needs to be
+	 * reversed again. */
 	unique_ptr<contracted_rg_node[]> H = unique_ptr<contracted_rg_node[]> (new contracted_rg_node[cnt_sccs]);
 
 	for (int v = 0; v < cnt_nodes; v++)
@@ -1050,19 +1146,20 @@ vector<RemovalGraphNode*> serialize_rgraph (
 		{
 			if (nodes[v].SCC != nodes[u].SCC)
 			{
-				H[nodes[u].SCC].children.insert(nodes[v].SCC);
-				H[nodes[v].SCC].unvisited_parents.insert (nodes[u].SCC);
-				H[nodes[v].SCC].has_parent = true;
+				H[nodes[v].SCC].children.insert(nodes[u].SCC);
+				H[nodes[u].SCC].unvisited_parents.insert (nodes[v].SCC);
 			}
 		}
 	}
 
-	/* Traverse the contracted graph */
+	/* Traverse the contracted graph using a version of Kahn's algorithm for the
+	 * transposed graph. */
 	vector<RemovalGraphNode*> serialized;
+	vector<int> S;
 
 	/* If a start node is specified, start traversal only there. That does
 	 * essentially not cover its ancestors (except if they are descendants, too,
-	 * i.e. it is part of a cycle). */
+	 * i.e. the start node is part of a cycle). */
 	if (start_node)
 	{
 		int v = 0;
@@ -1084,16 +1181,36 @@ vector<RemovalGraphNode*> serialize_rgraph (
 		}
 
 		if (found)
-			visit (H.get(), serialized, v);
+			S.push_back (v);
 	}
 	else
 	{
 		for (int v = 0; v < cnt_sccs; v++)
 		{
-			if (!H[v].has_parent)
-				visit (H.get(), serialized, v);
+			if (H[v].unvisited_parents.empty())
+				S.push_back (v);
 		}
 	}
+
+	/* Kahn's algorithm on the transposed graph */
+	while (S.size() > 0)
+	{
+		auto v = S.back();
+		S.pop_back ();
+
+		for (auto rg_node : H[v].original_nodes)
+			serialized.push_back (rg_node);
+
+		for (auto u : H[v].children)
+		{
+			H[u].unvisited_parents.erase (v);
+
+			if (H[u].unvisited_parents.empty())
+				S.push_back (u);
+		}
+	}
+
+	reverse (serialized.begin(), serialized.end());
 
 	return serialized;
 }

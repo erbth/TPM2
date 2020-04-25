@@ -96,9 +96,11 @@ namespace depres
 
 	struct InstallationGraph
 	{
+		using nodeset_type = std::map<std::pair<std::string, int>, std::shared_ptr<InstallationGraphNode>>;
+
 		/* A map (name, architecture) -> InstallationGraphNode to easily find
 		 * nodes for adding edges. */
-		std::map<std::pair<std::string, int>, std::shared_ptr<InstallationGraphNode>> V;
+		nodeset_type V;
 
 		/* The final file trie. It does not contain directories. */
 		FileTrie<std::vector<PackageMetaData*>> file_trie;
@@ -128,6 +130,22 @@ namespace depres
 			: status(SUCCESS), g(g)
 		{}
 	};
+
+
+	struct CIGRemoveNodeResult
+	{
+		bool success;
+		std::string error;
+
+		CIGRemoveNodeResult () : success(true) {};
+		CIGRemoveNodeResult (const std::string& error)
+			: success(false), error(error) {}
+	};
+
+	CIGRemoveNodeResult cig_remove_node (
+			InstallationGraph& g,
+			PackageMetaData* mdata,
+			std::set<std::pair<const std::string, int>> wanted_packages);
 
 
 	/* To serialize an installation graph. This does only order the nodes that
@@ -334,7 +352,6 @@ namespace depres
 		std::set<int> children;
 
 		std::set<int> unvisited_parents;
-		bool has_parent = false;
 	};
 }
 

@@ -43,7 +43,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 			return false;
 		}
 
-		fprintf (stderr, "Additional package: %s @%s %s\n",
+		fprintf (stderr, "Additional package: %s@%s %s\n",
 				res.name.c_str(),
 				Architecture::to_string (res.arch).c_str(),
 				res.vc ? res.vc->to_string().c_str() : " all versions");
@@ -370,12 +370,18 @@ bool install_packages(shared_ptr<Parameters> params)
 								op.pkg->architecture));
 					break;
 
+				case depres::pkg_operation::CHANGE_INSTALL:
+					to_change.push_back (make_pair (
+								op.ig_node->chosen_version->name,
+								op.ig_node->chosen_version->architecture));
+					break;
+
 				default:
 					break;
 			}
 		}
 
-		if (remove_pkgs)
+		if (!to_remove.empty())
 		{
 			printf ("These packages will be removed:\n");
 			for (auto& p : to_remove)
@@ -384,7 +390,7 @@ bool install_packages(shared_ptr<Parameters> params)
 			printf ("\n");
 		}
 
-		if (change_pkgs)
+		if (!to_change.empty())
 		{
 			printf ("These packages will be changed:\n");
 			for (auto& p : to_change)
@@ -402,17 +408,14 @@ bool install_packages(shared_ptr<Parameters> params)
 			printf ("\n");
 		}
 
-		if (remove_pkgs || change_pkgs || !to_install.empty())
+		if (!params->assume_yes)
 		{
-			if (!params->assume_yes)
+			printf ("Continue? ");
+			auto c = safe_query_user_input ("Yn");
+			if (c != 'y')
 			{
-				printf ("Continue? ");
-				auto c = safe_query_user_input ("Yn");
-				if (c != 'y')
-				{
-					printf ("User aborted.\n");
-					return false;
-				}
+				printf ("User aborted.\n");
+				return false;
 			}
 		}
 	}
