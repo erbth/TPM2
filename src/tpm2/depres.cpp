@@ -400,7 +400,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 			{
 				/* Conflict. Find out which package to keep and remove the
 				 * others. */
-				PackageMetaData* pkg_to_keep;
+				PackageMetaData* pkg_to_keep = nullptr;
 
 				for (auto mdata : h->data)
 				{

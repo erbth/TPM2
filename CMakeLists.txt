@@ -35,3 +35,18 @@ if (WITH_TESTS)
 endif ()
 
 add_subdirectory(src)
+
+
+# Packaging                                                                      
+set (CPACK_SOURCE_VERSION_MAJOR ${TPM2_VERSION_MAJOR})                           
+set (CPACK_SOURCE_VERSION_MINOR ${TPM2_VERSION_MINOR})                           
+set (CPACK_SOURCE_VERSION_PATCH ${TPM2_VERSION_PATCH})                           
+set (CPACK_SOURCE_GENERATOR "TGZ")                                               
+
+set (CPACK_SOURCE_IGNORE_FILES "/build;/\.git;.*\.swp;mysession\.vim;/playground;"
+	"/Documentation/.*\.aux;/Documentation/.*\.out;/Documentation/.*\.synctex.gz;"
+	"/Documentation/.*\.toc;/Documentation/.*\.log;"
+	"${CPACK_SOURCE_IGNORE_FILES}")
+
+set (CPACK_SOURCE_PACKAGE_FILE_NAME "tpm2-${CPACK_SOURCE_VERSION_MAJOR}.${CPACK_SOURCE_VERSION_MINOR}.${CPACK_SOURCE_VERSION_PATCH}")
+include(CPack)

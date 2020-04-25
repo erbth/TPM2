@@ -107,7 +107,7 @@ shared_ptr<Formula> Formula::from_string (const string& s)
 	else
 	{
 		/* Find operation + type specifier */
-		char is_sourcec;
+		char is_sourcec = 0;
 		string ops;
 		string vs;
 

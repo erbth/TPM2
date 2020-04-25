@@ -57,7 +57,7 @@ VersionNumber::VersionNumber(const string s)
 				/* If there is an active int component, add it first. */
 				if (active_int)
 				{
-					unsigned u;
+					unsigned u = 0;
 					from_chars(begin, cur, u);
 
 					components.push_back(VersionNumberComponent(u));
@@ -82,7 +82,7 @@ VersionNumber::VersionNumber(const string s)
 	/* Convert a last int component if one is left. */
 	if (active_int)
 	{
-		unsigned u;
+		unsigned u = 0;
 		from_chars(begin, cstr + length, u);
 
 		components.push_back(VersionNumberComponent(u));

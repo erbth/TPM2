@@ -29,3 +29,5 @@ if (STATIC_TPM2)
 else ()
 	target_link_libraries(tpm2 ${SQLITE3_LIBRARIES} ${TINY_XML2_LIBRARIES} ${ZLIB_LIBRARIES} stdc++fs)
 endif ()
+
+install (TARGETS tpm2 DESTINATION bin)
