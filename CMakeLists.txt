@@ -9,8 +9,8 @@ set(TPM2_VERSION_PATCH 0)
 # Options
 option (STATIC_TPM2 "Statically link the program TPM2" OFF)
 
-set(CMAKE_CXX_FLAGS "-std=gnu++17 -Wall -gdwarf-2")
-set(CMAKE_CXX_FLAGS_Debug "-DDEBUG -O1")
+set(CMAKE_CXX_FLAGS "-std=gnu++17 -Wall")
+set(CMAKE_CXX_FLAGS_Debug "-DDEBUG -O1 -gdwarf-2")
 set(CMAKE_CXX_FLAGS_Release "-O3")
 
 # Find required packages
