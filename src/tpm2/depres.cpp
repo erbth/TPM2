@@ -678,7 +678,8 @@ compute_operations_result compute_operations (
 	{
 		if (ig_node->currently_installed_version &&
 				ig_node->currently_installed_version == ig_node->chosen_version->version &&
-				ig_node->chosen_version->state == PKG_STATE_CONFIGURED)
+				ig_node->chosen_version->state == PKG_STATE_CONFIGURED &&
+				ig_node->manual == (ig_node->chosen_version->installation_reason == INSTALLATION_REASON_MANUAL))
 		{
 			continue;
 		}
