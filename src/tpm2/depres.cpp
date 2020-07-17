@@ -242,11 +242,30 @@ ComputeInstallationGraphResult compute_installation_graph(
 
 		if (!provpkg)
 		{
+			string pre_str;
+			for (auto& p : pnode->pre_constraints)
+			{
+				if (pre_str.size() > 0)
+					pre_str += " and ";
+
+				pre_str += p.first->name + ": " + p.second->to_string();
+			}
+
+			string str;
+			for (auto& p : pnode->constraints)
+			{
+				if (str.size() > 0)
+					str += " and ";
+
+				str += p.first->name + ": " + p.second->to_string();
+			}
+
 			return ComputeInstallationGraphResult (
 					ComputeInstallationGraphResult::NOT_FULFILLABLE,
 					"No available version of package " + pnode->name + "@" +
 					Architecture::to_string (pnode->architecture) +
-					" fulfills all version requirements.");
+					" fulfills all version requirements: "
+					+ pre_str + " / " + str + ".");
 		}
 
 
