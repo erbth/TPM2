@@ -148,7 +148,8 @@ shared_ptr<PackageMetaData> read_package_meta_data_from_xml (
 	const char* file_version = root->Attribute("file_version");
 
 	if (!file_version)
-		throw invalid_package_meta_data_xml ("The root \"pkg\" element has not file_version.");
+		throw invalid_package_meta_data_xml (
+				"The root \"pkg\" element does not have a \"file_version\" attribute.");
 
 	if (strcmp (file_version, "2.0") != 0)
 		throw invalid_package_meta_data_xml ("Unsupported file version " + string(file_version));

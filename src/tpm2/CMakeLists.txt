@@ -11,7 +11,6 @@ add_executable(tpm2
 	pkg_tools.cpp
 	../common/dependencies.cpp
 	../common/package_meta_data.cpp
-	../common/architecture.cpp
 	../common/common_utilities.cpp
 	../common/transport_form.cpp
 	../common/file_list.cpp

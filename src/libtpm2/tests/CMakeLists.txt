@@ -18,7 +18,22 @@ add_test (NAME test_package_constraints COMMAND test_package_constraints)
 
 add_executable (test_package_version
 	test_package_version.cpp
+	../package_version.cpp
+	../package_constraints.cpp
 	../version_number.cpp)
 
+target_include_directories (test_package_constraints PRIVATE ${TINY_XML2_INCLUDE_DIRS})
 target_link_libraries (test_package_version ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} ${TINY_XML2_LIBRARIES})
 add_test (NAME test_package_version COMMAND test_package_version)
+
+
+add_executable (test_depres2_basics
+	test_depres2_basics.cpp
+	../depres2.cpp
+	../package_constraints.cpp
+	../package_version.cpp
+	../version_number.cpp)
+
+target_include_directories (test_package_constraints PRIVATE ${TINY_XML2_INCLUDE_DIRS})
+target_link_libraries (test_depres2_basics ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} ${TINY_XML2_LIBRARIES})
+add_test (NAME test_depres2_basics COMMAND test_depres2_basics)

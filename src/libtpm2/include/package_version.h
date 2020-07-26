@@ -4,9 +4,12 @@
 #ifndef __PACKAGE_VERSION_H
 #define __PACKAGE_VERSION_H
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 #include <version_number.h>
+#include "package_constraints.h"
 
 /** Abstract base class */
 class PackageVersion
@@ -14,10 +17,11 @@ class PackageVersion
 protected:
 	const std::string name;
 	int architecture;
-	const VersionNumber version;
+	const VersionNumber source_version, binary_version;
 
-	PackageVersion(const std::string &n, const int architecture, const VersionNumber &v)
-		: name(n), architecture(architecture), version(v)
+	PackageVersion(const std::string &n, const int architecture,
+			const VersionNumber &sv, const VersionNumber &bv)
+		: name(n), architecture(architecture), source_version(sv), binary_version(bv)
 	{
 	}
 
@@ -44,19 +48,29 @@ public:
 		return make_pair(name, architecture);
 	}
 
-	inline VersionNumber get_version_number() const
+	inline VersionNumber get_source_version() const
 	{
-		return version;
+		return source_version;
 	}
 
+	inline VersionNumber get_binary_version() const
+	{
+		return binary_version;
+	}
+
+	virtual std::vector<
+			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+		> get_dependencies() const = 0;
+
 	/* Package versions can be compared based on their name, architecture and
-	 * version number. This means, among other things, that two package versions
-	 * are equal if they have the same name, architecture and version number, no
-	 * matter if they are the same object or even belong to the same subclass.
-	 * */
+	 * binary version number. This means, among other things, that two package
+	 * versions are equal if they have the same name, architecture and binary
+	 * version number, no matter if they are the same object or even belong to
+	 * the same subclass.  */
 	bool operator==(const PackageVersion &o) const
 	{
-		return o.name == name && o.architecture == architecture && o.version == version;
+		return o.name == name && o.architecture == architecture &&
+			o.binary_version == binary_version;
 	}
 
 	bool operator!=(const PackageVersion &o) const
@@ -76,7 +90,7 @@ public:
 		else if (architecture > o.architecture)
 			return false;
 
-		if (version < o.version)
+		if (binary_version < o.binary_version)
 			return true;
 
 		return false;
@@ -97,10 +111,5 @@ public:
 		return o <= *this;
 	}
 };
-
-/* Every class needs a destructor even if it is pure virtual. */
-PackageVersion::~PackageVersion()
-{
-}
 
 #endif /* __PACKAGE_VERSION_H */

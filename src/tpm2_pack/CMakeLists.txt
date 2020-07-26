@@ -3,7 +3,6 @@ add_executable (tpm2_pack
 	pack.cpp
 	../common/common_utilities.cpp
 	../common/package_meta_data.cpp
-	../common/architecture.cpp
 	../common/dependencies.cpp
 	../common/transport_form.cpp
 	../common/message_digest.cpp
