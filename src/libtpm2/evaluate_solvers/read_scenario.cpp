@@ -3,6 +3,7 @@
  * A library for reading testing scenarios, which are used to evaluate
  * dependency solvers. This C++ module contains the implementation. */
 #include <cstring>
+#include <algorithm>
 #include <optional>
 #include "architecture.h"
 #include "read_scenario.h"
@@ -30,7 +31,7 @@ read_required_package(XMLElement* root)
 		{
 			if (name)
 			{
-				fprintf(stderr, "Required package has two names (second on line %d)\n.",
+				fprintf(stderr, "Required package has two names (second on line %d).\n",
 						ce->GetLineNum());
 				return nullopt;
 			}
@@ -49,7 +50,7 @@ read_required_package(XMLElement* root)
 		{
 			if (arch != Architecture::invalid)
 			{
-				fprintf(stderr, "Required package has two architecture definitions (second on line %d)\n.",
+				fprintf(stderr, "Required package has two architecture definitions (second on line %d).\n",
 						ce->GetLineNum());
 				return nullopt;
 			}
@@ -165,19 +166,159 @@ read_required_package(XMLElement* root)
 
 	if (!name || strlen(name) == 0)
 	{
-		fprintf(stderr, "Required package at line %d misses a name.\n",
+		fprintf(stderr, "Required package on line %d misses a name.\n",
 				root->GetLineNum());
 		return nullopt;
 	}
 
 	if (arch == Architecture::invalid)
 	{
-		fprintf(stderr, "Required package at line %d misses an architecture.\n",
+		fprintf(stderr, "Required package on line %d misses an architecture.\n",
 				root->GetLineNum());
 		return nullopt;
 	}
 
 	return make_tuple(string(name), arch, constr);
+}
+
+std::shared_ptr<Scenario::Package> read_package_description (
+		std::shared_ptr<Scenario> scenario, XMLElement *root)
+{
+	XMLElement *elem = root->FirstChildElement();
+
+	const char *name = nullptr;
+	int arch = Architecture::invalid;
+	optional<VersionNumber> version;
+
+	while (elem)
+	{
+		auto n = elem->Name();
+
+		if (strcmp(n, "name") == 0)
+		{
+			if (name)
+			{
+				fprintf(stderr, "Package description has two names (second on line %d).\n",
+						elem->GetLineNum());
+				return nullptr;
+			}
+
+			const char *val = elem->GetText();
+			if (!val || strlen(val) == 0)
+			{
+				fprintf(stderr, "Empty name of package description on line %d.\n",
+						elem->GetLineNum());
+				return nullptr;
+			}
+
+			name = val;
+		}
+		else if (strcmp(n, "arch") == 0)
+		{
+			if (arch != Architecture::invalid)
+			{
+				fprintf (stderr, "Package description has two architecture definitions (second on line %d).\n",
+						elem->GetLineNum());
+				return nullptr;
+			}
+
+			const char *val = elem->GetText();
+			int tmp;
+
+			if (val)
+			{
+				try
+				{
+					tmp = Architecture::from_string(val);
+				}
+				catch (InvalidArchitecture&)
+				{
+					val = nullptr;
+				}
+			}
+
+			if (!val)
+			{
+				fprintf (stderr, "Invalid architecture of package description on line %d.\n",
+						elem->GetLineNum());
+				return nullptr;
+			}
+
+			arch = tmp;
+		}
+		else if (strcmp(n, "version") == 0)
+		{
+			if (version)
+			{
+				fprintf (stderr, "Package description has two version numbers (second on line %d).\n",
+						elem->GetLineNum());
+				return nullptr;
+			}
+
+			auto tmp = elem->GetText();
+			if (tmp)
+			{
+				try
+				{
+					version = VersionNumber(tmp);
+				}
+				catch (InvalidVersionNumberString& e)
+				{
+					fprintf(stderr, "Invalid version number on line %d: %s.\n",
+							elem->GetLineNum(), e.what());
+					return nullptr;
+				}
+			}
+		}
+		else
+		{
+			fprintf (stderr, "Invalid element \"%s\" in package description on line %d.\n",
+					n, elem->GetLineNum());
+			return nullptr;
+		}
+
+		if (elem != root->LastChildElement())
+			elem = elem->NextSiblingElement();
+		else
+			elem = nullptr;
+	}
+
+	/* Test if all required information has been given */
+	if (!name)
+	{
+		fprintf(stderr, "Package description on line %d misses a name.\n",
+				root->GetLineNum());
+		return nullptr;
+	}
+	
+	if (arch == Architecture::invalid)
+	{
+		fprintf (stderr, "Package description on line %d misses an architecture.\n",
+				root->GetLineNum());
+		return nullptr;
+	}
+	
+	if (!version)
+	{
+		fprintf (stderr, "Package description on line %d misses a version number.\n",
+				root->GetLineNum());
+		return nullptr;
+	}
+
+	/* Try to find the specified package in the universe. */
+	auto i = find_if (scenario->universe.begin(), scenario->universe.end(),
+			[name, arch, version](auto ppkg) {
+				return ppkg->name == name && ppkg->arch == arch && ppkg->bv == *version;
+			});
+
+	if (i == scenario->universe.end())
+	{
+		fprintf (stderr, "A package with name \"%s\", defined on line %d, does not exist in the universe.\n",
+				name, root->GetLineNum());
+		return nullptr;
+	}
+
+	return *i;
 }
 
 
@@ -623,6 +764,37 @@ bool read_selected(shared_ptr<Scenario> scenario, XMLElement* root)
 	return true;
 }
 
+bool read_desired(shared_ptr<Scenario> scenario, XMLElement *root)
+{
+	XMLElement *pkge = root->FirstChildElement();
+
+	while (pkge)
+	{
+		if (strcmp(pkge->Name(), "pkg") != 0)
+		{
+			fprintf(stderr, "Invalid element \"%s\" in desired on line %d.\n",
+					pkge->Name(), pkge->GetLineNum());
+			return false;
+		}
+
+		auto ppkg = read_package_description(scenario, pkge);
+		if (!ppkg)
+		{
+			fprintf (stderr, "Failed to read a desired package.\n");
+			return false;
+		}
+
+		scenario->desired.push_back(ppkg);
+
+		if (pkge != root->LastChildElement())
+			pkge = pkge->NextSiblingElement();
+		else
+			pkge = nullptr;
+	}
+
+	return true;
+}
+
 
 shared_ptr<Scenario> read_scenario(string filename)
 {
@@ -674,6 +846,11 @@ shared_ptr<Scenario> read_scenario(string filename)
 		else if (strcmp(n, "selected") == 0)
 		{
 			if (!read_selected(scenario, ce))
+				return nullptr;
+		}
+		else if (strcmp(n, "desired") == 0)
+		{
+			if (!read_desired(scenario, ce))
 				return nullptr;
 		}
 		else

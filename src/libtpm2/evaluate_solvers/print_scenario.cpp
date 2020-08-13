@@ -6,7 +6,7 @@ using namespace std;
 
 void print_usage()
 {
-	fprintf(stderr, "Usage: print_scenario <filename> universe | installed | selected\n");
+	fprintf(stderr, "Usage: print_scenario <filename> universe | installed | selected | desired\n");
 }
 
 int main(int argc, char** argv)
@@ -90,6 +90,18 @@ int main(int argc, char** argv)
 					name.c_str(),
 					Architecture::to_string(arch).c_str(),
 					constr->to_string().c_str());
+		}
+	}
+	else if (action == "desired")
+	{
+		printf ("Desired:\n");
+
+		for (auto& ppkg : scenario->desired)
+		{
+			printf ("  %s@%s:%s\n",
+					ppkg->name.c_str(),
+					Architecture::to_string(ppkg->arch).c_str(),
+					ppkg->bv.to_string().c_str());
 		}
 	}
 	else

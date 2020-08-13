@@ -117,4 +117,26 @@
 			<sconstr type="leq">2.5</sconstr> -->
 		</pkg>
 	</selected>
+	<desired>
+		<pkg>
+			<name>glibc</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+		</pkg>
+		<pkg>
+			<name>ncurses</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+		</pkg>
+		<pkg>
+			<name>readline</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+		</pkg>
+		<pkg>
+			<name>bash</name>
+			<arch>amd64</arch>
+			<version>1.1</version>
+		</pkg>
+	</desired>
 </scenario>

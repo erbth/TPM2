@@ -31,13 +31,18 @@ struct Scenario
 
 	std::string name;
 
+	/* The package universe - a list of pointers to packages */
 	std::vector<std::shared_ptr<Package>> universe;
 
-	/* (Package, manually installed) */
+	/* Installed packages - a list of tuples
+	 * (pointer to package, manually installed) */
 	std::vector<std::pair<std::shared_ptr<Package>, bool>> installed;
 
-	/* (name, arch, constraints) */
+	/* Selected packages - a list of tuples (name, arch, constraints) */
 	std::vector<std::tuple<std::string, int, std::shared_ptr<PackageConstraints::Formula>>> selected;
+
+	/* The desired target configuration - a list of pointers to packages */
+	std::vector<std::shared_ptr<Package>> desired;
 };
 
 std::shared_ptr<Scenario> read_scenario(std::string filename);
