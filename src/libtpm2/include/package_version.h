@@ -30,7 +30,7 @@ protected:
 public:
 	/* Tell if this package version is currently installed. Essentially this
 	 * method is supposed to return true for `InstalledPackageVersion`s and
-	 * false for `ProvidedPackageVersions`. It avoids a dynamic cast. */
+	 * false for `ProvidedPackageVersion`s. It avoids a dynamic cast. */
 	virtual bool is_installed() const = 0;
 
 	inline std::string get_name() const
@@ -60,7 +60,10 @@ public:
 
 	virtual std::vector<
 			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
-		> get_dependencies() const = 0;
+		> get_dependencies() = 0;
+
+	virtual const std::vector<std::string> &get_files() = 0;
+	virtual const std::vector<std::string> &get_directories() = 0;
 
 	/* Package versions can be compared based on their name, architecture and
 	 * binary version number. This means, among other things, that two package

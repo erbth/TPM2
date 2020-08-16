@@ -25,7 +25,7 @@ struct Scenario
 		std::vector<std::string> files;
 		std::vector<std::string> directories;
 
-		/* (name, arch, constraints */
+		/* (name, arch, constraints) */
 		std::vector<std::tuple<std::string, int, std::shared_ptr<PackageConstraints::Formula>>> deps;
 	};
 

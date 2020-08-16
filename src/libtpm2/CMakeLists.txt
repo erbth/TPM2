@@ -1,7 +1,10 @@
 add_library(libtpm2 STATIC
 	architecture.cpp
+	depres_common.cpp
+	depres_factory.cpp
 	depres2.cpp
 	package_constraints.cpp
+	package_version.cpp
 	version_number.cpp
 )
 

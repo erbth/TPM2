@@ -27,13 +27,26 @@ target_link_libraries (test_package_version ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY}
 add_test (NAME test_package_version COMMAND test_package_version)
 
 
-add_executable (test_depres2_basics
-	test_depres2_basics.cpp
+add_executable (test_depres_common
+	test_depres_common.cpp
+	../depres_common.cpp
 	../depres2.cpp
 	../package_constraints.cpp
 	../package_version.cpp
 	../version_number.cpp)
 
-target_include_directories (test_package_constraints PRIVATE ${TINY_XML2_INCLUDE_DIRS})
+target_include_directories (test_depres_common PRIVATE ${TINY_XML2_INCLUDE_DIRS})
+target_link_libraries (test_depres_common ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} ${TINY_XML2_LIBRARIES})
+add_test (NAME test_depres_common COMMAND test_depres_common)
+
+add_executable (test_depres2_basics
+	test_depres2_basics.cpp
+	../depres_common.cpp
+	../depres2.cpp
+	../package_constraints.cpp
+	../package_version.cpp
+	../version_number.cpp)
+
+target_include_directories (test_depres2_basics PRIVATE ${TINY_XML2_INCLUDE_DIRS})
 target_link_libraries (test_depres2_basics ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} ${TINY_XML2_LIBRARIES})
 add_test (NAME test_depres2_basics COMMAND test_depres2_basics)

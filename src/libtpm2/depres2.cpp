@@ -5,65 +5,10 @@
 
 using namespace std;
 
-namespace depres2
+namespace depres
 {
 
-void IGNode::set_dependencies()
-{
-	/* Clear existing dependencies */
-	for (const auto w : dependencies)
-	{
-		w->constraints.erase(this);
-		w->reverse_dependencies.erase(this);
-	}
-
-	dependencies.clear();
-
-	/* Add new dependencies if required */
-	if (chosen_version)
-	{
-		auto deps = chosen_version->get_dependencies();
-
-		for (const auto& dep : deps)
-		{
-			auto& w = s.get_or_add_node(dep.first);
-
-			dependencies.push_back(&w);
-			w.reverse_dependencies.insert(this);
-
-			/* Add version constraints to neighbors */
-			if (dep.second)
-				w.constraints.insert(make_pair(this, dep.second));
-		}
-	}
-}
-
-void IGNode::unset_chosen_version()
-{
-	chosen_version = nullptr;
-	set_dependencies();
-}
-
-void IGNode::unset_unsatisfying_version()
-{
-	bool fulfilled = true;
-
-	for (auto& pc : constraints)
-	{
-		if (!pc.second->fulfilled(
-				chosen_version->get_source_version(),
-				chosen_version->get_binary_version()))
-		{
-			fulfilled = false;
-			break;
-		}
-	}
-
-	if (!fulfilled)
-		unset_chosen_version();
-}
-
-IGNode &Solver::get_or_add_node(const pair<const string, const int> &identifier)
+IGNode &Depres2Solver::get_or_add_node(const pair<const string, const int> &identifier)
 {
 	auto i = G.find(identifier);
 
@@ -79,7 +24,19 @@ IGNode &Solver::get_or_add_node(const pair<const string, const int> &identifier)
 	return i->second;
 }
 
-bool Solver::solve()
+void Depres2Solver::set_parameters(
+		const vector<shared_ptr<PackageVersion>> &installed_packages,
+		const vector<selected_package_t> &selected_packages,
+		cb_list_package_versions_t cb_list_package_versions,
+		cb_get_package_version_t cb_get_package_version)
+{
+	this->installed_packages = installed_packages;
+	this->selected_packages = selected_packages;
+	this->cb_list_package_versions = cb_list_package_versions;
+	this->cb_get_package_version = cb_get_package_version;
+}
+
+bool Depres2Solver::solve()
 {
 	/* Insert the installed packages into the installation graph */
 	for (auto &pkg : installed_packages)
@@ -115,15 +72,15 @@ bool Solver::solve()
 	}
 
 	errors.push_back("Not completely implemented yet.");
-	return false;
+	return true;
 }
 
-vector<string> Solver::retrieve_errors() const
+vector<string> Depres2Solver::get_errors() const
 {
 	return errors;
 }
 
-Solver::installation_graph_t Solver::get_G()
+installation_graph_t Depres2Solver::get_G()
 {
 	return move(G);
 }

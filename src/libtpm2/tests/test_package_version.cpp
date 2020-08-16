@@ -8,6 +8,9 @@ namespace pc = PackageConstraints;
 
 class TestPackageVersion : public PackageVersion
 {
+protected:
+	vector<string> files, directories;
+
 public:
 	TestPackageVersion(const string &n, const int arch,
 			const VersionNumber &sv, const VersionNumber &bv)
@@ -20,11 +23,21 @@ public:
 		return false;
 	}
 
-	vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> get_dependencies() const override
+	vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> get_dependencies() override
 	{
 		vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> v;
 		v.push_back(make_pair(make_pair("test", 1), nullptr));
 		return v;
+	}
+
+	const vector<string> &get_files() override
+	{
+		return files;
+	}
+
+	const vector<string> &get_directories() override
+	{
+		return directories;
 	}
 };
 
