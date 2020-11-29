@@ -58,7 +58,10 @@ bool Depres2Solver::solve()
 
 		/* Remove unsatisfying chosen versions */
 		for (auto w : v.dependencies)
-			w->unset_unsatisfying_version();
+		{
+			if (w->unset_unsatisfying_version())
+				active.insert(w);
+		}
 	}
 
 	/* Add selected packages */
@@ -68,7 +71,18 @@ bool Depres2Solver::solve()
 
 		v.is_selected = true;
 		v.constraints.insert(make_pair(nullptr, sp.second));
-		v.unset_unsatisfying_version();
+
+		if (v.unset_unsatisfying_version())
+			active.insert(&v);
+	}
+
+	/* As long as there are active packages, try another configuration. */
+	while (active.size())
+	{
+		/* Choose a node */
+		auto v = *(active.first());
+
+		/* Choose a version that satisfies the dependencies, 
 	}
 
 	errors.push_back("Not completely implemented yet.");

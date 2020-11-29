@@ -45,10 +45,10 @@ void IGNode::unset_chosen_version()
 	set_dependencies();
 }
 
-void IGNode::unset_unsatisfying_version()
+bool IGNode::unset_unsatisfying_version()
 {
 	if (!chosen_version)
-		return;
+		return false;
 
 	bool fulfilled = true;
 
@@ -64,7 +64,14 @@ void IGNode::unset_unsatisfying_version()
 	}
 
 	if (!fulfilled)
+	{
 		unset_chosen_version();
+		return true;
+	}
+	else
+	{
+		return false;
+	}
 }
 
 }

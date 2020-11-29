@@ -106,8 +106,9 @@ namespace depres
 		 * does not need to be done manually. */
 		void unset_chosen_version();
 
-		/* Unset the chosen version if it does not meet the constraints. */
-		void unset_unsatisfying_version();
+		/** Unset the chosen version if it does not meet the constraints.
+		 * @returns True if the version was unset, false if not. */
+		bool unset_unsatisfying_version();
 
 		/* A '<' operator to be able to use this class in sets. */
 		inline bool operator<(const IGNode& o) const
