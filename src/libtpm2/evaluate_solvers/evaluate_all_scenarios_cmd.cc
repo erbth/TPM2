@@ -1,5 +1,5 @@
 #include <cstdio>
-#include "evaluate_all_scenarios.cpp"
+#include "evaluate_all_scenarios.cc"
 #include "depres_factory.h"
 
 int main(int argc, char** argv)

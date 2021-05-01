@@ -1,21 +1,21 @@
 add_executable(tpm2
-	tpm2.cpp
-	installation.cpp
-	parameters.cpp
-	utility.cpp
-	depres.cpp
-	package_db.cpp
-	package_provider.cpp
-	directory_repository.cpp
-	stored_maintainer_scripts.cpp
-	pkg_tools.cpp
-	../common/dependencies.cpp
-	../common/package_meta_data.cpp
-	../common/common_utilities.cpp
-	../common/transport_form.cpp
-	../common/file_list.cpp
-	../common/safe_console_input.cpp
-	../common/message_digest.cpp
+	tpm2.cc
+	installation.cc
+	parameters.cc
+	utility.cc
+	depres.cc
+	package_db.cc
+	package_provider.cc
+	directory_repository.cc
+	stored_maintainer_scripts.cc
+	pkg_tools.cc
+	../common/dependencies.cc
+	../common/package_meta_data.cc
+	../common/common_utilities.cc
+	../common/transport_form.cc
+	../common/file_list.cc
+	../common/safe_console_input.cc
+	../common/message_digest.cc
 	)
 
 

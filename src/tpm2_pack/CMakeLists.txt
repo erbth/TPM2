@@ -1,12 +1,12 @@
 add_executable (tpm2_pack
-	tpm2_pack.cpp
-	pack.cpp
-	../common/common_utilities.cpp
-	../common/package_meta_data.cpp
-	../common/dependencies.cpp
-	../common/transport_form.cpp
-	../common/message_digest.cpp
-	../common/file_list.cpp
+	tpm2_pack.cc
+	pack.cc
+	../common/common_utilities.cc
+	../common/package_meta_data.cc
+	../common/dependencies.cc
+	../common/transport_form.cc
+	../common/message_digest.cc
+	../common/file_list.cc
 	)
 
 target_include_directories (tpm2_pack PRIVATE ${TINY_XML2_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})

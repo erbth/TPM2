@@ -1,11 +1,11 @@
 add_library(libtpm2 STATIC
-	architecture.cpp
-	depres_common.cpp
-	depres_factory.cpp
-	depres2.cpp
-	package_constraints.cpp
-	package_version.cpp
-	version_number.cpp
+	architecture.cc
+	depres_common.cc
+	depres_factory.cc
+	depres2.cc
+	package_constraints.cc
+	package_version.cc
+	version_number.cc
 )
 
 set_target_properties(libtpm2 PROPERTIES OUTPUT_NAME libtpm2)
