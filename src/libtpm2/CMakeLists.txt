@@ -8,7 +8,7 @@ add_library(libtpm2 STATIC
 	version_number.cc
 )
 
-set_target_properties(libtpm2 PROPERTIES OUTPUT_NAME libtpm2)
+set_target_properties(libtpm2 PROPERTIES OUTPUT_NAME tpm2)
 
 if (WITH_TESTS)
 	add_subdirectory(evaluate_solvers)

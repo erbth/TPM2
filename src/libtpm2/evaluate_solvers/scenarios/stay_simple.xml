@@ -24,7 +24,7 @@
 				<pkg>
 					<name>glibc</name>
 					<arch>amd64</arch>
-					<constr type="gt">2.3</constr>
+					<sconstr type="gt">2.30</sconstr>
 				</pkg>
 			</deps>
 		</pkg>

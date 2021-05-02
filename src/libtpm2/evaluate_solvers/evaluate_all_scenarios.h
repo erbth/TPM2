@@ -17,7 +17,7 @@ class AllScenarioEvaluator
 protected:
 	std::filesystem::path scenario_path = DEFAULT_SCENARIO_PATH;
 
-	std::shared_ptr<depres::SolverInterface> solver;
+	std::string solver_name;
 
 	/* All scenarios in a vector of pairs <name, path> */
 	std::vector<std::pair<std::string, std::filesystem::path>> scenarios;
@@ -25,10 +25,10 @@ protected:
 	double overall_deviation {};
 
 public:
+	AllScenarioEvaluator(const std::string& solver_name);
+
 	/* Optional; if not called, a default will be used */
 	void set_scenario_path(const std::filesystem::path &path);
-
-	void set_solver(std::shared_ptr<depres::SolverInterface> solver);
 
 	void find_scenarios();
 	std::vector<std::string> list_scenarios() const;

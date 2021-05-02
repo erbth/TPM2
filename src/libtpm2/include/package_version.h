@@ -62,6 +62,10 @@ public:
 			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
 		> get_dependencies() = 0;
 
+	virtual std::vector<
+			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+		> get_pre_dependencies() = 0;
+
 	virtual const std::vector<std::string> &get_files() = 0;
 	virtual const std::vector<std::string> &get_directories() = 0;
 

@@ -17,7 +17,7 @@ public:
 
 	void add_simple_test_node(string name, int arch)
 	{
-		G.insert(make_pair(make_pair(name, arch), IGNode(*this, make_pair(name, arch), true)));
+		G.insert(make_pair(make_pair(name, arch), IGNode(*this, make_pair(name, arch), true, false)));
 	}
 
 	installation_graph_t &access_G()
@@ -46,6 +46,18 @@ public:
 	std::vector<
 			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
 		> get_dependencies() override
+	{
+		std::vector<
+				std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+			> deps;
+
+		deps.push_back(make_pair(make_pair(name, 0), make_shared<pc::And>(nullptr, nullptr)));
+		return deps;
+	}
+
+	std::vector<
+			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+		> get_pre_dependencies() override
 	{
 		std::vector<
 				std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>

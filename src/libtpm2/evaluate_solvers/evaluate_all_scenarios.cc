@@ -2,19 +2,20 @@
 #include <cmath>
 #include <cstdio>
 #include "evaluate_all_scenarios.h"
+#include "depres_factory.h"
 
 using namespace std;
 namespace fs = std::filesystem;
 
 
+AllScenarioEvaluator::AllScenarioEvaluator(const string& solver_name)
+	: solver_name(solver_name)
+{
+}
+
 void AllScenarioEvaluator::set_scenario_path(const fs::path &path)
 {
 	scenario_path = path;
-}
-
-void AllScenarioEvaluator::set_solver(shared_ptr<depres::SolverInterface> solver)
-{
-	this->solver = solver;
 }
 
 void AllScenarioEvaluator::find_scenarios()
@@ -45,12 +46,11 @@ void AllScenarioEvaluator::solve_all()
 	overall_deviation = 0;
 	bool failed = false;
 
-	ScenarioRunner runner;
-
-	runner.set_solver(solver);
-
 	for (auto &[name,path] : scenarios)
 	{
+		ScenarioRunner runner;
+		runner.set_solver(depres::create_solver(solver_name));
+
 		printf ("Evaluating scenario %s ...\n", name.c_str());
 		auto scenario = read_scenario(path);
 		if (!scenario)
@@ -79,9 +79,9 @@ void AllScenarioEvaluator::solve_all()
 		{
 			printf ("      --\n");
 		}
-	}
 
-	printf ("\n");
+		printf ("\n");
+	}
 
 	if (failed)
 		overall_deviation *= -1;

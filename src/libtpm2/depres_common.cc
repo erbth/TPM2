@@ -2,23 +2,48 @@
  *
  * Implementations of methods and functions common to all solvers of the depres
  * class. */
+#include "architecture.h"
 #include "depres_common.h"
+
+#include <iostream>
 
 using namespace std;
 
 namespace depres
 {
 
+string IGNode::identifier_to_string() const
+{
+	return identifier.first + "@" + Architecture::to_string(identifier.second);
+}
+
+string IGNode::get_name() const
+{
+	return identifier.first;
+}
+
+int IGNode::get_architecture() const
+{
+	return identifier.second;
+}
+
 void IGNode::set_dependencies()
 {
-	/* Clear existing dependencies */
+	/* Clear existing dependencies and pre-dependencies */
 	for (const auto w : dependencies)
 	{
 		w->constraints.erase(this);
 		w->reverse_dependencies.erase(this);
 	}
 
+	for (const auto w : pre_dependencies)
+	{
+		w->constraints.erase(this);
+		w->reverse_pre_dependencies.erase(this);
+	}
+
 	dependencies.clear();
+	pre_dependencies.clear();
 
 	/* Add new dependencies if required */
 	if (chosen_version)
@@ -35,6 +60,31 @@ void IGNode::set_dependencies()
 			/* Add version constraints to neighbors */
 			if (dep.second)
 				w.constraints.insert(make_pair(this, dep.second));
+		}
+
+		auto pre_deps = chosen_version->get_pre_dependencies();
+
+		for (const auto& dep : pre_deps)
+		{
+			auto& w = s.get_or_add_node(dep.first);
+
+			pre_dependencies.push_back(&w);
+			w.reverse_pre_dependencies.insert(this);
+
+			/* Add version constraints to neighbors or add it to an already
+			 * present version constraint from dependency. */
+			if (dep.second)
+			{
+				auto i = w.constraints.find(this);
+				if (i != w.constraints.end())
+				{
+					i->second = make_shared<PackageConstraints::And>(i->second, dep.second);
+				}
+				else
+				{
+					w.constraints.insert(make_pair(this, dep.second));
+				}
+			}
 		}
 	}
 }
@@ -72,6 +122,69 @@ bool IGNode::unset_unsatisfying_version()
 	{
 		return false;
 	}
+}
+
+string installation_graph_to_dot(installation_graph_t &G, const string &name)
+{
+	string dot;
+
+	dot += "digraph " + name + " {\n";
+
+	/* Assign each node an index */
+	int i = 0;
+	for (auto& p : G)
+		p.second.algo_priv = i++;
+
+	/* Render node */
+	for (auto p : G)
+	{
+		auto &v = p.second;
+		auto cv = v.chosen_version;
+		auto iv = v.installed_version;
+
+		dot += "    " + to_string(v.algo_priv) + " [label=\"";
+
+		if (!iv)
+		{
+			dot += "missing(" + v.get_name() +
+				"@" + Architecture::to_string(v.get_architecture()) +
+				":" + (cv ? cv->get_binary_version().to_string() : "<none>") +
+				", " + (v.installed_automatically ? "auto" : "manual") +
+				")";
+		}
+		else if (iv == cv)
+		{
+			dot += "installed(" + v.get_name() +
+				"@" + Architecture::to_string(v.get_architecture()) +
+				":" + (cv ? cv->get_binary_version().to_string() : "<none>") +
+				", " + (v.installed_automatically ? "auto" : "manual") +
+				")";
+		}
+		else
+		{
+			dot += "wrong version(" + v.get_name() +
+				"@" + Architecture::to_string(v.get_architecture()) +
+				":" + (cv ? cv->get_binary_version().to_string() : "<none>") +
+				", " + (v.installed_automatically ? "auto" : "manual") +
+				")";
+		}
+
+		dot += "\"];\n";
+	}
+
+	/* Render dependencies and pre-dependencies */
+	for (auto& [id, v] : G)
+	{
+		for (auto d : v.pre_dependencies)
+			dot += "    " + to_string(v.algo_priv) + " -> " + to_string(d->algo_priv) + " [style=dotted];\n";
+
+		for (auto d : v.dependencies)
+			dot += "    " + to_string(v.algo_priv) + " -> " + to_string(d->algo_priv) + ";\n";
+	}
+
+	dot += "}\n";
+
+	return dot;
 }
 
 }

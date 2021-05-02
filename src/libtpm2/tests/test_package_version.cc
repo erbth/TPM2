@@ -30,6 +30,13 @@ public:
 		return v;
 	}
 
+	vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> get_pre_dependencies() override
+	{
+		vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> v;
+		v.push_back(make_pair(make_pair("test2", 1), nullptr));
+		return v;
+	}
+
 	const vector<string> &get_files() override
 	{
 		return files;
@@ -73,6 +80,13 @@ BOOST_AUTO_TEST_CASE( test_basic )
 	auto dep = deps[0];
 	BOOST_TEST (dep.first == make_pair(string("test"), 1));
 	BOOST_TEST (dep.second == nullptr);
+
+	auto pre_deps = v.get_pre_dependencies();
+	BOOST_TEST (pre_deps.size() == 1);
+
+	auto pre_dep = pre_deps[0];
+	BOOST_TEST (pre_dep.first == make_pair(string("test2"), 1));
+	BOOST_TEST (pre_dep.second == nullptr);
 }
 
 BOOST_AUTO_TEST_CASE( test_comparators )

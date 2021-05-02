@@ -6,6 +6,7 @@
 #define __RUN_SCENARIO_H
 
 #include <memory>
+#include <utility>
 #include <vector>
 #include "depres_common.h"
 #include "read_scenario.h"
@@ -22,6 +23,10 @@ public:
 	std::vector<
 			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
 		> get_dependencies() override;
+
+	std::vector<
+			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+		> get_pre_dependencies() override;
 
 	const std::vector<std::string> &get_files() override;
 	const std::vector<std::string> &get_directories() override;
@@ -66,7 +71,7 @@ protected:
 	/* Adapted versions of the scenario that was read from an xml file s.t. they
 	 * meet the SolveInterface. */
 	std::vector<std::shared_ptr<PackageVersion>> adapted_universe;
-	std::vector<std::shared_ptr<PackageVersion>> adapted_installed_packages;
+	std::vector<std::pair<std::shared_ptr<PackageVersion>,bool>> adapted_installed_packages;
 	std::vector<std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>>
 		adapted_selected_packages;
 

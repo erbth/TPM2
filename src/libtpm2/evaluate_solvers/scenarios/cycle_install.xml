@@ -1,0 +1,84 @@
+<scenario name="cycle_install">
+	<universe>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>2.3</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/a</f>
+			</files>
+			<deps>
+				<pkg>
+					<name>b</name>
+					<arch>amd64</arch>
+					<constr type="eq">1.0</constr>
+				</pkg>
+			</deps>
+		</pkg>
+
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+			<source_version>1.7</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/b</f>
+			</files>
+			<deps>
+				<pkg>
+					<name>c</name>
+					<arch>amd64</arch>
+					<constr type="eq">1.0</constr>
+				</pkg>
+			</deps>
+		</pkg>
+
+		<pkg>
+			<name>c</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/c</f>
+			</files>
+			<deps>
+				<pkg>
+					<name>a</name>
+					<arch>amd64</arch>
+					<constr type="eq">1.0</constr>
+				</pkg>
+			</deps>
+		</pkg>
+	</universe>
+
+	<installed>
+	</installed>
+
+	<selected>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+		</pkg>
+	</selected>
+
+	<desired>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+		</pkg>
+
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+		</pkg>
+
+		<pkg>
+			<name>c</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+		</pkg>
+	</desired>
+</scenario>

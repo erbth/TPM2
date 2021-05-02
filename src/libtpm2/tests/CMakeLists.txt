@@ -33,7 +33,8 @@ add_executable (test_depres_common
 	../depres2.cc
 	../package_constraints.cc
 	../package_version.cc
-	../version_number.cc)
+	../version_number.cc
+	../architecture.cc)
 
 target_include_directories (test_depres_common PRIVATE ${TINY_XML2_INCLUDE_DIRS})
 target_link_libraries (test_depres_common ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} ${TINY_XML2_LIBRARIES})
@@ -45,7 +46,8 @@ add_executable (test_depres2_basics
 	../depres2.cc
 	../package_constraints.cc
 	../package_version.cc
-	../version_number.cc)
+	../version_number.cc
+	../architecture.cc)
 
 target_include_directories (test_depres2_basics PRIVATE ${TINY_XML2_INCLUDE_DIRS})
 target_link_libraries (test_depres2_basics ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} ${TINY_XML2_LIBRARIES})

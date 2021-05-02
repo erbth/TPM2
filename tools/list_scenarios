@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
+import os
 from find_scenarios import find_scenarios
 
 for name, path in find_scenarios():
-    print(name)
+    print("%s (%s)" % (name, os.path.normpath(path)))

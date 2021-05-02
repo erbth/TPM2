@@ -1,6 +1,5 @@
 #include <cstdio>
 #include "evaluate_all_scenarios.cc"
-#include "depres_factory.h"
 
 int main(int argc, char** argv)
 {
@@ -10,8 +9,7 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	AllScenarioEvaluator e;
-	e.set_solver(depres::create_solver("depres2"));
+	AllScenarioEvaluator e("depres2");
 
 	e.find_scenarios();
 

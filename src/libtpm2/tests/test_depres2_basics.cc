@@ -19,7 +19,7 @@ public:
 
 	void add_simple_test_node(string name, int arch)
 	{
-		G.insert(make_pair(make_pair(name, arch), IGNode(*this, make_pair(name, arch), true)));
+		G.insert(make_pair(make_pair(name, arch), IGNode(*this, make_pair(name, arch), true, false)));
 	}
 
 	installation_graph_t &access_G()

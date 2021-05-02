@@ -30,6 +30,11 @@ vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> PackageVersionAdaptor::
 	return deps;
 }
 
+vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> PackageVersionAdaptor::get_pre_dependencies()
+{
+	return vector<pair<pair<string, int>, shared_ptr<pc::Formula>>>();
+}
+
 const vector<string> &PackageVersionAdaptor::get_files()
 {
 	return scenario_package->files;
@@ -89,7 +94,8 @@ void ScenarioRunner::set_scenario(shared_ptr<Scenario> scenario)
 	adapted_installed_packages.clear();
 
 	for (auto [pkg, manual] : scenario->installed)
-		adapted_installed_packages.push_back(make_shared<InstalledPackageVersionAdaptor>(pkg));
+		adapted_installed_packages.push_back(
+				{make_shared<InstalledPackageVersionAdaptor>(pkg), !manual});
 
 	/* Create adapted selected package list */
 	adapted_selected_packages.clear();
@@ -133,10 +139,8 @@ void ScenarioRunner::run()
 			result.push_back(v.chosen_version);
 		}
 	}
-	else
-	{
-		solver_errors = solver->get_errors();
-	}
+
+	solver_errors = solver->get_errors();
 }
 
 pair<double, vector<string>> ScenarioRunner::evaluate_result()
@@ -156,7 +160,7 @@ pair<double, vector<string>> ScenarioRunner::evaluate_result()
 	/* Every package that is either missing or would not be required
 	 * ('additional packages') counts one. If any package is missing, the
 	 * deviation is negative. */
-	double deviation;
+	double deviation = 0;
 	bool missing = false;
 
 	/* Find missing packages */
@@ -212,6 +216,13 @@ pair<double, vector<string>> ScenarioRunner::evaluate_result()
 
 	if (missing)
 		deviation *= -1;
+
+	if (solver_errors.size())
+	{
+		reasons.push_back("However there are solver errors:");
+		for (auto& error : solver_errors)
+			reasons.push_back("  " + error);
+	}
 
 	return make_pair(deviation, reasons);
 }

@@ -65,16 +65,18 @@ namespace depres
 		 * At most one source identifier may be ommited to indicate constraints
 		 * imposed by the user. */
 		std::map<
-				const IGNode*,
+				IGNode*,
 				std::shared_ptr<PackageConstraints::Formula>
 			> constraints;
 
-		/* Dependencies (a shortcut on the graph and not on packages like the
-		 * chosen version returns them) */
+		/* Dependencies and pre-dependencies (a shortcut on the graph and not on
+		 * packages like the chosen version returns them) */
 		std::vector<IGNode*> dependencies;
+		std::vector<IGNode*> pre_dependencies;
 
 		/* Reverse dependencies */
 		std::set<IGNode*> reverse_dependencies;
+		std::set<IGNode*> reverse_pre_dependencies;
 
 		/* Chosen version */
 		std::shared_ptr<PackageVersion> chosen_version;
@@ -82,20 +84,33 @@ namespace depres
 		/* Installed version */
 		std::shared_ptr<PackageVersion> installed_version;
 
-		/* If the package is selected by the user */
+		/* If the package is selected by the user, and if not, if it was
+		 * installed automatically. */
 		bool is_selected;
+		bool installed_automatically;
+
+		/* Private data to use by algorithms etc. Must not be relied on to be
+         * present after the function that uses them exits, however it is not
+         * altered by the graph's members. Only by third entities. */
+        ssize_t algo_priv;
 
 		/* A constructor */
 		IGNode(
 				SolverInterface& s,
 				const std::pair<const std::string, const int> &identifier,
-				const bool is_selected)
+				const bool is_selected,
+				const bool installed_automatically)
 			:
 				s(s),
 				identifier(identifier),
-				is_selected(is_selected)
+				is_selected(is_selected),
+				installed_automatically(is_selected ? false : installed_automatically)
 		{
 		}
+
+		std::string identifier_to_string() const;
+		std::string get_name() const;
+		int get_architecture() const;
 
 		/* Set dependencies and reverse dependencies based on chosen_version. If
 		 * the lasster is nullptr, all dependencies and reverse dependencies are
@@ -135,8 +150,9 @@ namespace depres
 	public:
 		virtual ~SolverInterface() { };
 
+		/* @param installed_packages  [(version, automatically installed)] */
 		virtual void set_parameters(
-				const std::vector<std::shared_ptr<PackageVersion>> &installed_packages,
+				const std::vector<std::pair<std::shared_ptr<PackageVersion>, bool>> &installed_packages,
 				const std::vector<selected_package_t> &selected_packages,
 				cb_list_package_versions_t cb_list_package_versions,
 				cb_get_package_version_t cb_get_package_version) = 0;
@@ -150,6 +166,11 @@ namespace depres
 		/* This will move the installation graph. */
 		virtual installation_graph_t get_G() = 0;
 	};
+
+	/* Render the installation graph as string in dot-format. WARNING: This
+	 * modifies algo_priv. */
+	std::string installation_graph_to_dot(
+			installation_graph_t &G, const std::string &name = "G");
 }
 
 #endif /* __DEPRES_COMMON_H */

@@ -24,7 +24,7 @@
 				<pkg>
 					<name>glibc</name>
 					<arch>amd64</arch>
-					<constr type="gt">2.3</constr>
+					<sconstr type="gt">2.3</sconstr>
 				</pkg>
 			</deps>
 		</pkg>
@@ -48,6 +48,29 @@
 			<arch>amd64</arch>
 			<source_version>5.0</source_version>
 			<binary_version>1.1</binary_version>
+			<files>
+				<f>/bin/bash</f>
+			</files>
+			<deps>
+				<pkg>
+					<name>glibc</name>
+					<arch>amd64</arch>
+				</pkg>
+				<pkg>
+					<name>ncurses</name>
+					<arch>amd64</arch>
+				</pkg>
+				<pkg>
+					<name>readline</name>
+					<arch>amd64</arch>
+				</pkg>
+			</deps>
+		</pkg>
+		<pkg>
+			<name>bash</name>
+			<arch>amd64</arch>
+			<source_version>4.4</source_version>
+			<binary_version>1.0</binary_version>
 			<files>
 				<f>/bin/bash</f>
 			</files>

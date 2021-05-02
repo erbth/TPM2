@@ -46,7 +46,7 @@ void print_help()
 "optional, one of them may be given alone, or both. Or none. arch can be amd64,\n"
 "i386 or any other supported architecture. Instead of >= one may use <=, >, <,\n"
 "!=, = or == where the latter two mean the same. Version number is a version\n"
-"number in the format like verywhere else withing TSLegacy.\n\n"
+"number in the format like verywhere else within TSClient LEGACY.\n\n"
 
 "Parameters:\n"
 "  --version               Print the program's version\n\n"
