@@ -43,6 +43,8 @@ struct Scenario
 
 	/* The desired target configuration - a list of pointers to packages */
 	std::vector<std::shared_ptr<Package>> desired;
+
+	std::vector<std::string> desired_errors;
 };
 
 std::shared_ptr<Scenario> read_scenario(std::string filename);

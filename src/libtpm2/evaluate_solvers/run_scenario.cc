@@ -127,16 +127,16 @@ void ScenarioRunner::run()
 
 		for (auto &[key, v] : solver_G)
 		{
-			if (!v.chosen_version)
+			if (!v->chosen_version)
 			{
 				solver_succeeded = false;
-				solver_errors.push_back("IGNode (" + v.identifier.first + ", " +
-						Architecture::to_string(v.identifier.second) + ") has no chosen version.");
+				solver_errors.push_back("IGNode (" + v->identifier.first + ", " +
+						Architecture::to_string(v->identifier.second) + ") has no chosen version.");
 
 				break;
 			}
 
-			result.push_back(v.chosen_version);
+			result.push_back(v->chosen_version);
 		}
 	}
 
@@ -147,10 +147,62 @@ pair<double, vector<string>> ScenarioRunner::evaluate_result()
 {
 	vector<string> reasons;
 
-	/* If the solver failed, the deviation is -inf. */
+	/* If the solver failed but should have not or failed with the wrong error
+	 * message, the deviation is -inf. */
 	if (!solver_succeeded)
 	{
-		reasons.push_back ("Solver failed.");
+		if (scenario->desired_errors.size())
+		{
+			reasons.push_back("Original solver errors:");
+			for (auto &error : solver_errors)
+				reasons.push_back(error);
+
+			bool ok = true;
+
+			if (solver_errors.size() != scenario->desired_errors.size())
+			{
+				ok = false;
+				reasons.push_back("Solver failed and solver_errors.size() != desired_errors.size().");
+			}
+
+			if (ok)
+			{
+				auto i = solver_errors.begin();
+
+				for (const auto& desired : scenario->desired_errors)
+				{
+					const auto& error = *i++;
+					if (error.rfind(desired, 0) != 0)
+					{
+						ok = false;
+						reasons.push_back(
+								"Solver failed but did not return an error "
+								"message starting with: \"" + desired + "\".");
+						break;
+					}
+				}
+			}
+
+			if (ok)
+				reasons.push_back("Solver failed with desired error messages.");
+
+			return make_pair(ok ? 0. : -INFINITY, reasons);
+		}
+		else
+		{
+			reasons.push_back ("Solver failed but it should have not.");
+			for (auto &error : solver_errors)
+				reasons.push_back(error);
+
+			return make_pair(-INFINITY, reasons);
+		}
+	}
+
+	/* If the solver succeeded but should have failed, the deviation is likewise
+	 * -inf. */
+	if (scenario->desired_errors.size())
+	{
+		reasons.push_back("Solver succeeded but should have failed.");
 		for (auto &error : solver_errors)
 			reasons.push_back(error);
 

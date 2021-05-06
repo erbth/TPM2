@@ -770,21 +770,35 @@ bool read_desired(shared_ptr<Scenario> scenario, XMLElement *root)
 
 	while (pkge)
 	{
-		if (strcmp(pkge->Name(), "pkg") != 0)
+		if (strcmp(pkge->Name(), "pkg") == 0)
+		{
+			auto ppkg = read_package_description(scenario, pkge);
+			if (!ppkg)
+			{
+				fprintf (stderr, "Failed to read a desired package.\n");
+				return false;
+			}
+
+			scenario->desired.push_back(ppkg);
+		}
+		else if (strcmp(pkge->Name(), "error") == 0)
+		{
+			const char* error = pkge->GetText();
+			if (!error)
+			{
+				fprintf(stderr, "<error/> must contain a text o line %d.\n",
+						pkge->GetLineNum());
+				return false;
+			}
+
+			scenario->desired_errors.push_back(error);
+		}
+		else
 		{
 			fprintf(stderr, "Invalid element \"%s\" in desired on line %d.\n",
 					pkge->Name(), pkge->GetLineNum());
 			return false;
 		}
-
-		auto ppkg = read_package_description(scenario, pkge);
-		if (!ppkg)
-		{
-			fprintf (stderr, "Failed to read a desired package.\n");
-			return false;
-		}
-
-		scenario->desired.push_back(ppkg);
 
 		if (pkge != root->LastChildElement())
 			pkge = pkge->NextSiblingElement();

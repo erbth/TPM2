@@ -6,6 +6,7 @@ add_library(libtpm2 STATIC
 	package_constraints.cc
 	package_version.cc
 	version_number.cc
+	common_utilities.cc
 )
 
 set_target_properties(libtpm2 PROPERTIES OUTPUT_NAME tpm2)

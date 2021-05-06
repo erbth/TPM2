@@ -11,7 +11,6 @@ add_executable(tpm2
 	pkg_tools.cc
 	../common/dependencies.cc
 	../common/package_meta_data.cc
-	../common/common_utilities.cc
 	../common/transport_form.cc
 	../common/file_list.cc
 	../common/safe_console_input.cc

@@ -1,0 +1,43 @@
+<scenario name="file_user_conflict">
+	<universe>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.7</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/a</f>
+				<f>/usr/lib/libmail.so</f>
+			</files>
+		</pkg>
+
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+			<source_version>1.2</source_version>
+			<binary_version>1.1</binary_version>
+			<files>
+				<f>/usr/bin/b</f>
+				<f>/usr/lib/libmail.so</f>
+			</files>
+		</pkg>
+	</universe>
+
+	<installed>
+	</installed>
+
+	<selected>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+		</pkg>
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+		</pkg>
+	</selected>
+
+	<desired>
+		<error>The solver considers the scenario unsolvable because it detected a loop in its execution</error>
+	</desired>
+</scenario>

@@ -1,7 +1,6 @@
 add_executable (tpm2_pack
 	tpm2_pack.cc
 	pack.cc
-	../common/common_utilities.cc
 	../common/package_meta_data.cc
 	../common/dependencies.cc
 	../common/transport_form.cc

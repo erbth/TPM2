@@ -1,0 +1,70 @@
+<scenario name="file_move_versions_upgrade">
+	<universe>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.7</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/a</f>
+				<f>/usr/lib/liba.so</f>
+			</files>
+		</pkg>
+
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.7</source_version>
+			<binary_version>1.1</binary_version>
+			<deps>
+				<pkg>
+					<name>b</name>
+					<arch>amd64</arch>
+					<constr type="eq">1.1</constr>
+				</pkg>
+			</deps>
+			<files>
+				<f>/usr/bin/a</f>
+			</files>
+		</pkg>
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+			<source_version>1.7</source_version>
+			<binary_version>1.1</binary_version>
+			<files>
+				<f>/usr/lib/liba.so</f>
+			</files>
+		</pkg>
+	</universe>
+
+	<installed>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+			<manual>true</manual>
+		</pkg>
+	</installed>
+
+	<selected>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<constr type="gt">1.0</constr>
+		</pkg>
+	</selected>
+
+	<desired>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<version>1.1</version>
+		</pkg>
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+			<version>1.1</version>
+		</pkg>
+	</desired>
+</scenario>

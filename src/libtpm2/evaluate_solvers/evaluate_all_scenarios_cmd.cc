@@ -25,4 +25,6 @@ int main(int argc, char** argv)
 	/* Print the overall result */
 	double overall_deviation = e.get_overall_deviation();
 	printf ("Overall deviation: %f\n", overall_deviation);
+
+	return overall_deviation == 0 ? 0 : 1;
 }

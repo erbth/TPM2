@@ -19,7 +19,7 @@ public:
 
 	void add_simple_test_node(string name, int arch)
 	{
-		G.insert(make_pair(make_pair(name, arch), IGNode(*this, make_pair(name, arch), true, false)));
+		G.insert(make_pair(make_pair(name, arch), make_shared<Depres2IGNode>(*this, make_pair(name, arch), true, false)));
 	}
 
 	installation_graph_t &access_G()
@@ -54,7 +54,7 @@ BOOST_AUTO_TEST_CASE( test_get_G )
 	auto G = s.get_G();
 	BOOST_TEST( G.size() == 1);
 	BOOST_TEST( (bool) (G.find(make_pair("test", 1)) != G.end()) );
-	BOOST_TEST( (bool) (G.find(make_pair("test", 1))->second.is_selected == true) );
+	BOOST_TEST( (bool) (G.find(make_pair("test", 1))->second->is_selected == true) );
 
 	BOOST_TEST( s.get_G().size() == 0);
 }

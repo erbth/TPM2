@@ -3,11 +3,6 @@
  * Depres version 2
  *
  * TODO:
- *   * user_contradiction_1
- *   * user_contradiction_2
- *   * cycle_oscillation
- *
- *   * conflict through files (actual conflicts between packages)
  *   * removing packages (? - would enable to move files between packages
  *     without having to provide empty versions of the packages which previously
  *     owned the files)
@@ -25,10 +20,38 @@
 #include "package_constraints.h"
 #include "package_version.h"
 #include "depres_common.h"
+#include "file_trie.h"
 
 
 namespace depres
 {
+	class Depres2Solver;
+
+	/* Custom IGNode subclass with private data */
+	class Depres2IGNode : public IGNode
+	{
+		friend Depres2Solver;
+
+	protected:
+		/* A set of pairs (version, alpha) which have been chosen for this
+		 * package during the algorithm's execution. This is used to detect
+		 * loops in the algorithm's execution. */
+		std::map<std::pair<const VersionNumber, const float>, int> previous_versions;
+
+		/* Clear private data to save memory. To be called when the solver is
+		 * finished / when returning G. */
+		void clear_private_data();
+
+	public:
+		/* Should only be created by depres2, but new requires the constructor
+		 * to be public. */
+		Depres2IGNode(
+				SolverInterface& s,
+				const std::pair<const std::string, const int> &identifier,
+				const bool is_selected,
+				const bool installed_automatically);
+	};
+
 	/* The depres algorithm version 2.0 */
 	class Depres2Solver : public SolverInterface
 	{
@@ -42,11 +65,12 @@ namespace depres
 
 		installation_graph_t G;
 		std::set<IGNode*> active;
+		FileTrie<IGNode*> files;
 
 		std::vector<std::string> errors;
 
 		/* Methods for manipulating the installation graph G. */
-		IGNode &get_or_add_node(const std::pair<const std::string, const int> &identifier) override;
+		std::shared_ptr<IGNode> get_or_add_node(const std::pair<const std::string, const int> &identifier) override;
 
 		/* Solver internals */
 		float compute_alpha(
@@ -54,6 +78,9 @@ namespace depres
 				const IGNode* pv,
 				std::shared_ptr<PackageVersion> version,
 				int version_index, int versions_count);
+
+		/* Eject a node and optionally put it into the active set. */
+		void eject_node(IGNode& v, bool put_into_active);
 
 	public:
 		virtual ~Depres2Solver() {}

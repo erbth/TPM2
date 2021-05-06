@@ -1,6 +1,7 @@
 /** This file is part of the TSClient LEGACY Package Manager */
 #include <cmath>
 #include <cstdio>
+#include <algorithm>
 #include "evaluate_all_scenarios.h"
 #include "depres_factory.h"
 
@@ -22,13 +23,15 @@ void AllScenarioEvaluator::find_scenarios()
 {
 	for (auto &file : fs::directory_iterator(scenario_path))
 	{
-		if (file.path().extension() == "xml" ||
+		if (file.path().extension() != ".xml" ||
 				(((string) file.path().filename()).size() >= 1 && ((string) file.path().filename())[0] == '.'))
 			continue;
 
 		if (file.is_regular_file())
 			scenarios.push_back(make_pair(file.path().stem(), file.path()));
 	}
+
+	sort(scenarios.begin(), scenarios.end());
 }
 
 vector<string> AllScenarioEvaluator::list_scenarios() const
@@ -51,7 +54,7 @@ void AllScenarioEvaluator::solve_all()
 		ScenarioRunner runner;
 		runner.set_solver(depres::create_solver(solver_name));
 
-		printf ("Evaluating scenario %s ...\n", name.c_str());
+		printf ("\033[32mEvaluating scenario %s ...\033[0m\n", name.c_str());
 		auto scenario = read_scenario(path);
 		if (!scenario)
 		{
@@ -69,7 +72,12 @@ void AllScenarioEvaluator::solve_all()
 		if (deviation < 0)
 			failed = true;
 
-		printf ("  Deviation: %f\n    Reasons:\n", deviation);
+		if (deviation != 0.)
+			printf ("\033[31m  Deviation: %f\033[0m\n", deviation);
+		else
+			printf ("  Deviation: %f\n", deviation);
+
+		printf ("    Reasons:\n");
 		if (reasons.size())
 		{
 			for (auto &reason : reasons)

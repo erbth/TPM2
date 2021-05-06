@@ -6,6 +6,14 @@ target_link_libraries (test_version_number ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 add_test (NAME test_version_number COMMAND test_version_number)
 
 
+add_executable (test_file_trie
+	test_file_trie.cc
+	../common_utilities.cc)
+
+target_link_libraries (test_file_trie ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} stdc++fs)
+add_test (NAME test_file_trie COMMAND test_file_trie)
+
+
 add_executable (test_package_constraints
 	test_package_constraints.cc
 	../package_constraints.cc
@@ -34,7 +42,8 @@ add_executable (test_depres_common
 	../package_constraints.cc
 	../package_version.cc
 	../version_number.cc
-	../architecture.cc)
+	../architecture.cc
+	../common_utilities.cc)
 
 target_include_directories (test_depres_common PRIVATE ${TINY_XML2_INCLUDE_DIRS})
 target_link_libraries (test_depres_common ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} ${TINY_XML2_LIBRARIES})
@@ -47,7 +56,8 @@ add_executable (test_depres2_basics
 	../package_constraints.cc
 	../package_version.cc
 	../version_number.cc
-	../architecture.cc)
+	../architecture.cc
+	../common_utilities.cc)
 
 target_include_directories (test_depres2_basics PRIVATE ${TINY_XML2_INCLUDE_DIRS})
 target_link_libraries (test_depres2_basics ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} ${TINY_XML2_LIBRARIES})

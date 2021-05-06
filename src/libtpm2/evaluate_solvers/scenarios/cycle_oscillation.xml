@@ -111,5 +111,6 @@
 	</selected>
 
 	<desired>
+		<error>The solver considers the scenario unsolvable because it detected a loop in its execution:</error>
 	</desired>
 </scenario>

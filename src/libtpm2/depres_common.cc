@@ -12,6 +12,23 @@ using namespace std;
 namespace depres
 {
 
+IGNode::IGNode(
+		SolverInterface& s,
+		const std::pair<const std::string, const int> &identifier,
+		const bool is_selected,
+		const bool installed_automatically)
+	:
+		s(s),
+		identifier(identifier),
+		is_selected(is_selected),
+		installed_automatically(is_selected ? false : installed_automatically)
+{
+}
+
+IGNode::~IGNode()
+{
+}
+
 string IGNode::identifier_to_string() const
 {
 	return identifier.first + "@" + Architecture::to_string(identifier.second);
@@ -52,37 +69,37 @@ void IGNode::set_dependencies()
 
 		for (const auto& dep : deps)
 		{
-			auto& w = s.get_or_add_node(dep.first);
+			auto pw = s.get_or_add_node(dep.first);
 
-			dependencies.push_back(&w);
-			w.reverse_dependencies.insert(this);
+			dependencies.push_back(pw.get());
+			pw->reverse_dependencies.insert(this);
 
 			/* Add version constraints to neighbors */
 			if (dep.second)
-				w.constraints.insert(make_pair(this, dep.second));
+				pw->constraints.insert(make_pair(this, dep.second));
 		}
 
 		auto pre_deps = chosen_version->get_pre_dependencies();
 
 		for (const auto& dep : pre_deps)
 		{
-			auto& w = s.get_or_add_node(dep.first);
+			auto pw = s.get_or_add_node(dep.first);
 
-			pre_dependencies.push_back(&w);
-			w.reverse_pre_dependencies.insert(this);
+			pre_dependencies.push_back(pw.get());
+			pw->reverse_pre_dependencies.insert(this);
 
 			/* Add version constraints to neighbors or add it to an already
 			 * present version constraint from dependency. */
 			if (dep.second)
 			{
-				auto i = w.constraints.find(this);
-				if (i != w.constraints.end())
+				auto i = pw->constraints.find(this);
+				if (i != pw->constraints.end())
 				{
 					i->second = make_shared<PackageConstraints::And>(i->second, dep.second);
 				}
 				else
 				{
-					w.constraints.insert(make_pair(this, dep.second));
+					pw->constraints.insert(make_pair(this, dep.second));
 				}
 			}
 		}
@@ -95,10 +112,10 @@ void IGNode::unset_chosen_version()
 	set_dependencies();
 }
 
-bool IGNode::unset_unsatisfying_version()
+bool IGNode::version_is_satisfying()
 {
 	if (!chosen_version)
-		return false;
+		return true;
 
 	bool fulfilled = true;
 
@@ -113,7 +130,15 @@ bool IGNode::unset_unsatisfying_version()
 		}
 	}
 
-	if (!fulfilled)
+	return fulfilled;
+}
+
+bool IGNode::unset_unsatisfying_version()
+{
+	if (!chosen_version)
+		return false;
+
+	if (!version_is_satisfying())
 	{
 		unset_chosen_version();
 		return true;
@@ -133,39 +158,39 @@ string installation_graph_to_dot(installation_graph_t &G, const string &name)
 	/* Assign each node an index */
 	int i = 0;
 	for (auto& p : G)
-		p.second.algo_priv = i++;
+		p.second->algo_priv = i++;
 
 	/* Render node */
 	for (auto p : G)
 	{
-		auto &v = p.second;
-		auto cv = v.chosen_version;
-		auto iv = v.installed_version;
+		auto v = p.second;
+		auto cv = v->chosen_version;
+		auto iv = v->installed_version;
 
-		dot += "    " + to_string(v.algo_priv) + " [label=\"";
+		dot += "    " + to_string(v->algo_priv) + " [label=\"";
 
 		if (!iv)
 		{
-			dot += "missing(" + v.get_name() +
-				"@" + Architecture::to_string(v.get_architecture()) +
+			dot += "missing(" + v->get_name() +
+				"@" + Architecture::to_string(v->get_architecture()) +
 				":" + (cv ? cv->get_binary_version().to_string() : "<none>") +
-				", " + (v.installed_automatically ? "auto" : "manual") +
+				", " + (v->installed_automatically ? "auto" : "manual") +
 				")";
 		}
 		else if (iv == cv)
 		{
-			dot += "installed(" + v.get_name() +
-				"@" + Architecture::to_string(v.get_architecture()) +
+			dot += "installed(" + v->get_name() +
+				"@" + Architecture::to_string(v->get_architecture()) +
 				":" + (cv ? cv->get_binary_version().to_string() : "<none>") +
-				", " + (v.installed_automatically ? "auto" : "manual") +
+				", " + (v->installed_automatically ? "auto" : "manual") +
 				")";
 		}
 		else
 		{
-			dot += "wrong version(" + v.get_name() +
-				"@" + Architecture::to_string(v.get_architecture()) +
+			dot += "wrong version(" + v->get_name() +
+				"@" + Architecture::to_string(v->get_architecture()) +
 				":" + (cv ? cv->get_binary_version().to_string() : "<none>") +
-				", " + (v.installed_automatically ? "auto" : "manual") +
+				", " + (v->installed_automatically ? "auto" : "manual") +
 				")";
 		}
 
@@ -173,13 +198,13 @@ string installation_graph_to_dot(installation_graph_t &G, const string &name)
 	}
 
 	/* Render dependencies and pre-dependencies */
-	for (auto& [id, v] : G)
+	for (auto [id, v] : G)
 	{
-		for (auto d : v.pre_dependencies)
-			dot += "    " + to_string(v.algo_priv) + " -> " + to_string(d->algo_priv) + " [style=dotted];\n";
+		for (auto d : v->pre_dependencies)
+			dot += "    " + to_string(v->algo_priv) + " -> " + to_string(d->algo_priv) + " [style=dotted];\n";
 
-		for (auto d : v.dependencies)
-			dot += "    " + to_string(v.algo_priv) + " -> " + to_string(d->algo_priv) + ";\n";
+		for (auto d : v->dependencies)
+			dot += "    " + to_string(v->algo_priv) + " -> " + to_string(d->algo_priv) + ";\n";
 	}
 
 	dot += "}\n";

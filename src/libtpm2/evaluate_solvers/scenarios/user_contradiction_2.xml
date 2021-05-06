@@ -127,25 +127,14 @@
 			<arch>amd64</arch>
 			<constr type="gt">1.0</constr>
 		</pkg>
-	</selected>
-
-	<desired>
-		<pkg>
-			<name>a</name>
-			<arch>amd64</arch>
-			<version>1.1</version>
-		</pkg>
-
-		<pkg>
-			<name>b</name>
-			<arch>amd64</arch>
-			<version>1.1</version>
-		</pkg>
-
 		<pkg>
 			<name>c</name>
 			<arch>amd64</arch>
-			<version>1.1</version>
+			<constr type="lt">1.1</constr>
 		</pkg>
+	</selected>
+
+	<desired>
+		<error>The solver considers the scenario unsolvable because it detected a loop in its execution:</error>
 	</desired>
 </scenario>

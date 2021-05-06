@@ -35,7 +35,9 @@ namespace depres
 	class SolverInterface;
 
 	/* Simple type "definitions" */
-	using installation_graph_t = std::map<std::pair<const std::string, const int>, IGNode>;
+	using installation_graph_t = std::map<
+		std::pair<const std::string, const int>,
+		std::shared_ptr<IGNode>>;
 
 	using selected_package_t = std::pair<
 		std::pair<std::string, int>,
@@ -94,19 +96,14 @@ namespace depres
          * altered by the graph's members. Only by third entities. */
         ssize_t algo_priv;
 
-		/* A constructor */
+		/* A constructor and virtual destructor */
 		IGNode(
 				SolverInterface& s,
 				const std::pair<const std::string, const int> &identifier,
 				const bool is_selected,
-				const bool installed_automatically)
-			:
-				s(s),
-				identifier(identifier),
-				is_selected(is_selected),
-				installed_automatically(is_selected ? false : installed_automatically)
-		{
-		}
+				const bool installed_automatically);
+
+		virtual ~IGNode();
 
 		std::string identifier_to_string() const;
 		std::string get_name() const;
@@ -121,15 +118,13 @@ namespace depres
 		 * does not need to be done manually. */
 		void unset_chosen_version();
 
+		/** @returns true if the chosen version satisfies all constraints of the
+		 * node, false if not. If no version is chosen, true is returned. */
+		bool version_is_satisfying();
+
 		/** Unset the chosen version if it does not meet the constraints.
 		 * @returns True if the version was unset, false if not. */
 		bool unset_unsatisfying_version();
-
-		/* A '<' operator to be able to use this class in sets. */
-		inline bool operator<(const IGNode& o) const
-		{
-			return this < &o;
-		}
 	};
 
 	/* The main interface for package solvers */
@@ -145,7 +140,8 @@ namespace depres
 		/* Retrieves an existing node or adds a new one with that name and
 		 * architecture to the installation graph. In case a new node is added,
 		 * it is placed on the active set. */
-		virtual IGNode &get_or_add_node(const std::pair<const std::string, const int> &identifier) = 0;
+		virtual std::shared_ptr<IGNode> get_or_add_node(
+				const std::pair<const std::string, const int> &identifier) = 0;
 
 	public:
 		virtual ~SolverInterface() { };

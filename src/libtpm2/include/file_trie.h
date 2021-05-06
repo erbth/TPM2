@@ -340,6 +340,11 @@ public:
 
 		return true;
 	}
+
+	void clear()
+	{
+		children.clear();
+	}
 };
 
 

@@ -66,6 +66,9 @@ public:
 			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
 		> get_pre_dependencies() = 0;
 
+	/* Get a list of of absolute paths of contained files and directories.
+	 * Every file that is not a directory (regular files, links, ...) is
+	 * considered to be a file. */
 	virtual const std::vector<std::string> &get_files() = 0;
 	virtual const std::vector<std::string> &get_directories() = 0;
 
