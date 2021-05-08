@@ -115,7 +115,7 @@ void IGNode::unset_chosen_version()
 bool IGNode::version_is_satisfying()
 {
 	if (!chosen_version)
-		return true;
+		return false;
 
 	bool fulfilled = true;
 
@@ -198,7 +198,7 @@ string installation_graph_to_dot(installation_graph_t &G, const string &name)
 	}
 
 	/* Render dependencies and pre-dependencies */
-	for (auto [id, v] : G)
+	for (auto& [id, v] : G)
 	{
 		for (auto d : v->pre_dependencies)
 			dot += "    " + to_string(v->algo_priv) + " -> " + to_string(d->algo_priv) + " [style=dotted];\n";

@@ -1,0 +1,71 @@
+<scenario name="remove_temporary_added_package">
+	<universe>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+		</pkg>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.1</binary_version>
+			<deps>
+				<pkg>
+					<name>b</name>
+					<arch>amd64</arch>
+					<constr type="eq">1.0</constr>
+				</pkg>
+			</deps>
+		</pkg>
+
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+		</pkg>
+
+		<pkg>
+			<name>c</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+			<deps>
+				<pkg>
+					<name>a</name>
+					<arch>amd64</arch>
+					<constr type="eq">1.0</constr>
+				</pkg>
+			</deps>
+		</pkg>
+	</universe>
+
+	<installed>
+	</installed>
+
+	<selected>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+		</pkg>
+		<pkg>
+			<name>c</name>
+			<arch>amd64</arch>
+		</pkg>
+	</selected>
+
+	<desired>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+		</pkg>
+		<pkg>
+			<name>c</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+		</pkg>
+	</desired>
+</scenario>

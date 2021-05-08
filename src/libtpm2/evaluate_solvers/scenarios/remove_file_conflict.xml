@@ -1,0 +1,65 @@
+<scenario name="remove_file_conflict">
+	<universe>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/a</f>
+			</files>
+		</pkg>
+
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/b</f>
+			</files>
+		</pkg>
+
+		<pkg>
+			<name>c</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/a</f>
+				<f>/usr/bin/b</f>
+			</files>
+		</pkg>
+	</universe>
+
+	<installed>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+			<manual>true</manual>
+		</pkg>
+
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+			<manual>true</manual>
+		</pkg>
+	</installed>
+
+	<selected>
+		<pkg>
+			<name>c</name>
+			<arch>amd64</arch>
+		</pkg>
+	</selected>
+
+	<desired>
+		<pkg>
+			<name>c</name>
+			<arch>amd64</arch>
+			<version>1.0</version>
+		</pkg>
+	</desired>
+</scenario>

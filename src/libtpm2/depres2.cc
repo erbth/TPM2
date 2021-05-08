@@ -3,13 +3,14 @@
  * Implementation of depres v2. */
 #include <cmath>
 #include <algorithm>
+#include <deque>
 #include "depres2.h"
 
 #include <iostream>
 
 using namespace std;
 
-// #define LOG_DEBUG
+#define LOG_DEBUG
 
 /* Some macros for printing to the console */
 #define PRINT_WARNING(X) (cerr << "Depres2: Warning: " << X)
@@ -35,7 +36,6 @@ Depres2IGNode::Depres2IGNode(
 
 void Depres2IGNode::clear_private_data()
 {
-	previous_versions.clear();
 }
 
 
@@ -56,7 +56,7 @@ shared_ptr<IGNode> Depres2Solver::get_or_add_node(const pair<const string, const
 		 * packages, too, but the two attributes will be set accordingly. */
 		i = G.insert(make_pair(
 				identifier,
-				make_shared<Depres2IGNode>(*this, identifier, false, false))).first;
+				make_shared<Depres2IGNode>(*this, identifier, false, true))).first;
 
 		active.insert(i->second.get());
 	}
@@ -108,7 +108,7 @@ float Depres2Solver::compute_alpha(
 	/* Test if the version can be installed without ejecting other
 	 * package versions (of dependencies or pre-dependencies). */
 	float cnt_ejects = 0.f;
-	for (auto [id, constr] : version->get_dependencies())
+	for (auto& [id, constr] : version->get_dependencies())
 	{
 		auto iw = G.find(id);
 		if (iw == G.end())
@@ -123,7 +123,7 @@ float Depres2Solver::compute_alpha(
 		}
 	}
 
-	for (auto [id, constr] : version->get_pre_dependencies())
+	for (auto& [id, constr] : version->get_pre_dependencies())
 	{
 		auto iw = G.find(id);
 		if (iw == G.end())
@@ -155,8 +155,22 @@ float Depres2Solver::compute_alpha(
 		f = -1.f - (1.f - 1.f / file_conflicts.size());
 
 	/* Compute bias b */
-	/* For now implement upgrade policy only. */
-	float b = (float) version_index / versions_count;
+	float b;
+
+	switch (policy)
+	{
+	case Policy::upgrade:
+		b = (float) version_index / versions_count;
+		break;
+
+	case Policy::keep_newer:
+	default:
+		if (pv->installed_version && pv->installed_version == version)
+			b = 0.95f;
+		else
+			b = 0.8f * ((float) version_index / versions_count);
+		break;
+	}
 
 	/* Combine components into a score of the package */
 	float alpha = 1.f * c + 2.f * d + 4.f * f + 1.f * b;
@@ -170,13 +184,61 @@ float Depres2Solver::compute_alpha(
 
 void Depres2Solver::eject_node(IGNode& v, bool put_into_active)
 {
-	for (const auto& file : v.chosen_version->get_files())
-		files.remove_element(file);
+	if (v.chosen_version)
+	{
+		for (const auto& file : v.chosen_version->get_files())
+			files.remove_element(file);
+	}
 
 	v.unset_chosen_version();
 
 	if (put_into_active)
 		active.insert(&v);
+}
+
+bool Depres2Solver::is_node_unreachable(IGNode& v)
+{
+	/* Keep installed- and selected nodes */
+	if (v.is_selected || v.installed_version)
+		return false;
+
+	return v.reverse_dependencies.size() == 0 &&
+		v.reverse_pre_dependencies.size() == 0;
+}
+
+void Depres2Solver::remove_unreachable_nodes()
+{
+	deque<shared_ptr<IGNode>> to_remove;
+	for (auto& [id, v] : G)
+	{
+		if (is_node_unreachable(*v))
+			to_remove.push_back(v);
+	}
+
+	while (to_remove.size())
+	{
+		auto v = to_remove.front();
+		to_remove.pop_front();
+
+		PRINT_DEBUG("Garbage collecting node " << v->identifier_to_string() << "." << endl);
+
+		auto dependencies = v->dependencies;
+		dependencies.insert(v->dependencies.end(),
+				v->pre_dependencies.begin(), v->pre_dependencies.end());
+
+		/* Remove node */
+		eject_node(*v, false);
+
+		active.erase(v.get());
+		G.erase(v->identifier);
+
+		/* Check if the node's dependencies became unreachable */
+		for (auto u : dependencies)
+		{
+			if (is_node_unreachable(*u))
+				to_remove.push_back(G.find(u->identifier)->second);
+		}
+	}
 }
 
 
@@ -190,6 +252,19 @@ void Depres2Solver::set_parameters(
 	this->selected_packages = selected_packages;
 	this->cb_list_package_versions = cb_list_package_versions;
 	this->cb_get_package_version = cb_get_package_version;
+}
+
+void Depres2Solver::set_policy(int p)
+{
+	if (
+			p != Policy::keep_newer &&
+			p != Policy::upgrade
+	   )
+	{
+		return;
+	}
+
+	policy = p;
 }
 
 bool Depres2Solver::solve()
@@ -319,24 +394,26 @@ bool Depres2Solver::solve()
 			continue;
 
 		/* Loop detection */
-		pair<const VersionNumber, const float> loop_id(
+		tuple<const string, const int, const VersionNumber, const float> loop_id(
+				pv->get_name(),
+				pv->get_architecture(),
 				best_version->get_binary_version(),
 				alpha_max);
 
-		auto iloop = pv->previous_versions.find(loop_id);
-		int loop_cnt = iloop != pv->previous_versions.end() ? iloop->second : 0;
+		auto iloop = previous_versions.find(loop_id);
+		int loop_cnt = iloop != previous_versions.end() ? iloop->second : 0;
 		if (loop_cnt >= 10)
 		{
 			errors.push_back(
 					"The solver considers the scenario unsolvable because it "
 					"detected a loop in its execution: " +
-					pv->identifier_to_string() + ":" + loop_id.first.to_string() +
-					" was choosen twice with alpha = " + to_string(loop_id.second));
+					pv->identifier_to_string() + ":" + get<2>(loop_id).to_string() +
+					" was choosen twice with alpha = " + to_string(get<3>(loop_id)));
 
 			return false;
 		}
 
-		pv->previous_versions.insert_or_assign(loop_id, loop_cnt + 1);
+		previous_versions.insert_or_assign(loop_id, loop_cnt + 1);
 
 		/* Clean files of previous version */
 		if (pv->chosen_version)
@@ -362,7 +439,7 @@ bool Depres2Solver::solve()
 		PRINT_DEBUG("Ejecting newly unsatisfied dependencies and pre-dependencies ..." << endl);
 		for (auto w : pv->dependencies)
 		{
-			if (!w->version_is_satisfying())
+			if (w->chosen_version && !w->version_is_satisfying())
 			{
 				PRINT_DEBUG("    " << w->identifier_to_string() << endl);
 				eject_node(*w, false);
@@ -373,7 +450,7 @@ bool Depres2Solver::solve()
 
 		for (auto w : pv->pre_dependencies)
 		{
-			if (!w->version_is_satisfying())
+			if (w->chosen_version && !w->version_is_satisfying())
 			{
 				PRINT_DEBUG("    " << w->identifier_to_string() << " (pre)" << endl);
 				eject_node(*w, false);
@@ -422,6 +499,9 @@ bool Depres2Solver::solve()
 	}
 
 
+	remove_unreachable_nodes();
+
+
 	PRINT_DEBUG(installation_graph_to_dot(G) << endl);
 	return true;
 }
@@ -434,10 +514,11 @@ vector<string> Depres2Solver::get_errors() const
 installation_graph_t Depres2Solver::get_G()
 {
 	/* Clear private data to free memory */
-	for (auto [id, v] : G)
+	for (auto& [id, v] : G)
 		dynamic_pointer_cast<Depres2IGNode>(v)->clear_private_data();
 
 	files.clear();
+	previous_versions.clear();
 
 	return move(G);
 }

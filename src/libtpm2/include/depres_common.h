@@ -119,7 +119,7 @@ namespace depres
 		void unset_chosen_version();
 
 		/** @returns true if the chosen version satisfies all constraints of the
-		 * node, false if not. If no version is chosen, true is returned. */
+		 * node, false if not. If no version is chosen, false is returned. */
 		bool version_is_satisfying();
 
 		/** Unset the chosen version if it does not meet the constraints.
