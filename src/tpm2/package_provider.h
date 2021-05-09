@@ -17,9 +17,10 @@
 #include "transport_form.h"
 #include "managed_buffer.h"
 #include "file_list.h"
+#include "package_version.h"
 
 
-class ProvidedPackage
+class ProvidedPackage : public PackageVersion
 {
 private:
 	std::shared_ptr<PackageMetaData> mdata;
@@ -29,6 +30,11 @@ private:
 	std::shared_ptr<TransportForm::ReadStream> rs;
 
 	std::shared_ptr<FileList> files;
+
+	std::vector<std::string> file_paths;
+	std::vector<std::string> directory_paths;
+	bool file_paths_populated = false;
+	bool directory_paths_populated = false;
 
 	std::shared_ptr<ManagedBuffer<char>> preinst;
 	std::shared_ptr<ManagedBuffer<char>> configure;
@@ -44,11 +50,24 @@ public:
 			const TransportForm::TableOfContents& toc,
 			std::shared_ptr<TransportForm::ReadStream> rs);
 
-	std::shared_ptr<PackageMetaData> get_mdata();
+	/* PackageVersion interface */
+	bool is_installed() const override;
+
+	std::vector<std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>>
+		get_dependencies() override;
+
+	std::vector<std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>>
+		get_pre_dependencies() override;
+
+	const std::vector<std::string> &get_files() override;
+	const std::vector<std::string> &get_directories() override;
+
+	/* Original methods */
+	std::shared_ptr<PackageMetaData> get_mdata() const;
 
 	/* This will always return a valid pointer. If the package has no files, the
 	 * list is simply empty. */
-	std::shared_ptr<FileList> get_files();
+	std::shared_ptr<FileList> get_file_list();
 
 	/* These do only return something other than nullptr if the corresponding
 	 * maintainer script is present. */
@@ -61,7 +80,7 @@ public:
 
 	void clear_buffers();
 
-	/* Keep care: This calls exec and does NOT close fds before! */
+	/* Take care: This calls exec and does NOT close fds before! */
 	void unpack_archive_to_directory(const std::string& dst);
 };
 

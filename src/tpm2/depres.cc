@@ -3,568 +3,152 @@
 #include "depres.h"
 #include "architecture.h"
 #include "common_utilities.h"
+#include "depres_factory.h"
+#include "depres2.h"
+#include "file_trie.h"
 
 using namespace std;
 
 
 namespace depres
 {
+/* InstalledPackageVersion to provide installed packages to the solver */
+InstalledPackageVersion::InstalledPackageVersion(shared_ptr<PackageMetaData> mdata)
+	:
+		PackageVersion(mdata->name, mdata->architecture, mdata->source_version, mdata->version),
+		mdata(mdata),
+		pkgdb(pkgdb)
+{
+	for (const auto& file : pkgdb.get_files(mdata))
+	{
+		if (file.type == FILE_TYPE_DIRECTORY)
+			directory_paths.push_back(file.path);
+		else
+			file_paths.push_back(file.path);
+	}
+}
+
+bool InstalledPackageVersion::is_installed() const
+{
+	return true;
+}
+
+vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>
+InstalledPackageVersion::get_dependencies()
+{
+	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>> deps;
+	for (auto& dep : mdata->dependencies)
+		deps.append(make_pair(dep.identifier, dep.version_formula));
+
+	return deps;
+}
+
+vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>
+InstalledPackageVersion::get_pre_dependencies()
+{
+	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>> deps;
+	for (auto& dep : mdata->pre_dependencies)
+		deps.append(make_pair(dep.identifier, dep.version_formula));
+
+	return deps;
+}
+
+const std::vector<std::string> &get_files()
+{
+	return file_paths;
+}
+
+const std::vector<std::string> &get_directories()
+{
+	return directory_paths;
+}
+
+shared_ptr<PackageMetaData> InstalledPackageVersion::get_mdata() const
+{
+	return mdata;
+}
+
+bool InstalledPackageVersion::installed_automatically() const
+{
+	return mdata->installation_reasion == INSTALLATION_REASON_AUTO;
+}
+
 
 ComputeInstallationGraphResult compute_installation_graph(
 		shared_ptr<Parameters> params,
 		vector<shared_ptr<PackageMetaData>> installed_packages,
 		PackageDB& pkgdb,
 		shared_ptr<PackageProvider> pprov,
-		vector<
-			pair<
-				pair<const string, int>,
-				shared_ptr<const PackageConstraints::Formula>
-			>
-		> new_packages)
+		const vector<selected_package_t> &selected_packages)
 {
-	/* The installation graph with a file trie to efficiently test for
-	 * conflicting packages. */
-	InstallationGraph g;
-
-	/* A set of active packages */
-	set<InstallationGraphNode*> active;
-
-	/* Add all installed packages to the installation graph. This does also
-	 * construct a file trie, which will be altered while depres computes the
-	 * target configuration. */
-	for (auto p : installed_packages)
+	/* Build a map of InstalledPackageVersions from installed_packages */
+	map<pair<string, int>, shared_ptr<InstalledPackageVersion>> installed_map;
+	for (auto mdata : installed_packages)
 	{
-		auto node = make_shared<InstallationGraphNode>(
-				p->name,
-				p->architecture,
-				true,
-				p);
-
-		node->sms = make_shared<StoredMaintainerScripts> (params, p);
-		node->sms->clear_buffers();
-
-		g.add_node(node);
-
-		auto files = pkgdb.get_files (p);
-		for (auto& file : files)
-		{
-			/* For package collision detection it's enough to consider files
-			 * only. Directories maybe present in many packages, and files are
-			 * typically not. The latter allows for simpler file trie node to
-			 * package pointers. */
-			if (file.type != FILE_TYPE_DIRECTORY)
-			{
-				FileTrieNodeHandle<vector<PackageMetaData*>> h;
-				h = g.file_trie.find_file (file.path);
-
-				if (!h)
-				{
-					g.file_trie.insert_file (file.path);
-					h = g.file_trie.find_file (file.path);
-				}
-
-				/* No point in making this faster as this vector will only have
-				 * two elements in an valid configuration. */
-				h->data.push_back (p.get());
-
-				node->file_node_handles.push_back (h);
-			}
-		}
+		installed_map.insert(make_pair(
+					make_pair(mdata->name, mdata->architecture),
+					make_shared<InstalledPackageVersion>(mdata, pkgdb)));
 	}
 
-	/* Add dependencies of installed packages to the installation graph */
-	for (auto p : installed_packages)
-	{
-		auto node = g.V.find({p->name, p->architecture})->second;
+	/* Callbacks to interface with the solver */
+	auto list_package_versions = [=pprov](const string& name, int arch) {
+		auto s = pprov->list_package_versions(name, arch);
 
-		/* Pre-dependencies */
-		for (const Dependency& d : p->pre_dependencies)
-		{
-			auto id_node = g.V.find(d.identifier);
+		/* Add installed version number */
+		auto installed = installed_map.find({name, arch});
+		if (installed != installed_map.end())
+			s.insert(installed->get_binary_version());
 
-			if (id_node == g.V.end())
-			{
-				id_node = g.V.insert (
-						make_pair (
-							d.identifier,
-							make_shared<InstallationGraphNode>(
-								d.get_name(), d.get_architecture()
-							)
-						)
-					).first;
+		return move(vector<VersionNumber>(move_iterator(s.begin()), move_iterator(s.end()));
+	};
 
-				active.insert (id_node->second.get());
-			}
-
-			auto d_node = id_node->second;
-
-			/* Add edge */
-			node->pre_dependencies.push_back(d_node.get());
-			d_node->pre_dependees.insert(node.get());
-
-			/* Add version constraining formula */
-			d_node->pre_constraints.insert({node.get(), d.version_formula});
-		}
-
-		/* Regular dependencies */
-		for (const Dependency& d : p->dependencies)
-		{
-			auto id_node = g.V.find(d.identifier);
-
-			if (id_node == g.V.end())
-			{
-				id_node = g.V.insert (
-						make_pair (
-							d.identifier,
-							make_shared<InstallationGraphNode>(
-								d.get_name(), d.get_architecture()
-							)
-						)
-					).first;
-
-				active.insert (id_node->second.get());
-			}
-
-			auto d_node = id_node->second;
-
-			/* Add edge */
-			node->dependencies.push_back(d_node.get());
-			d_node->dependees.insert(node.get());
-
-			/* Add version constraining formula */
-			d_node->constraints.insert({node.get(), d.version_formula});
-		}
-	}
-
-
-	/* Maybe check if the current configuration is valid. That is, apart from
-	 * what has already been done above, the chosen versions must fulfill the
-	 * constraints of dependencies and the installed packages must not conflict.
-	 * */
-
-
-	/* Add new packages */
-	for (auto& new_pkg : new_packages)
-	{
-		shared_ptr<InstallationGraphNode> node;
-
-		auto p = g.V.find (new_pkg.first);
-
-		bool was_new = false;
-
-		if (p != g.V.end())
-		{
-			node = p->second;
-		}
+	auto get_package_version = [](const string &name, int architecture, const VersionNumber &version) {
+		auto installed = installed_map.find({name, architecture});
+		if (installed != installed_map.end() && installed->get_binary_version == version)
+			return *installed;
 		else
-		{
-			was_new = true;
+			return pprov->get_package(name, architecture, version);
+	};
 
-			node = make_shared<InstallationGraphNode>(
-					new_pkg.first.first, new_pkg.first.second);
-		}
+	/* Create solver */
+	auto solver = dynamic_pointer_cast<Depres2Solver>(create_solver("depres2"));
 
-		node->manual = true;
+	/* Set solver parameters */
+	vector<pair<shared_ptr<PackageVersion>, bool>> adapted_installed_packages;
+	for (auto& [id, pkg] : installed_map)
+		adapted_installed_packages.push_back(make_pair(pkg, pkg.installed_automatically));
 
-		if (new_pkg.second)
-			node->constraints.insert ({nullptr, new_pkg.second});
+	solver->set_parameters(
+			adapted_installed_packages,
+			selected_packages,
+			list_package_versions,
+			get_package_version);
 
-		if (was_new)
-			g.add_node (node);
+	/* Depres 2 specific policy */
+	solver->set_policy(Policy::keep_newer);
 
-		active.insert (node.get());
-	}
-
-
-	/* Choose versions and resolve dependencies */
-	while (active.size() > 0)
+	/* Try to solve the update problem and returnt he result. */
+	if (solver->solve())
 	{
-		auto i = active.begin();
-		auto pnode = *i;
-		active.erase (i);
-
-		set<VersionNumber> vers = pprov->list_package_versions (
-				pnode->name, pnode->architecture);
-
-		if (vers.size() == 0)
-		{
-			return ComputeInstallationGraphResult (
-					ComputeInstallationGraphResult::NOT_FULFILLABLE,
-					"No version of package " + pnode->name + "@" +
-					Architecture::to_string (pnode->architecture) + " available.");
-		}
-
-		/* Rule out versions that don't fulfill the constraints and choose the
-		 * newest one that does (newest according to binary version, there is
-		 * always one). */
-		shared_ptr<ProvidedPackage> provpkg;
-
-		for (auto i = vers.rbegin(); !provpkg && i != vers.rend(); i++)
-		{
-			provpkg = pprov->get_package (
-					pnode->name, pnode->architecture, *i);
-
-			if (!provpkg)
-			{
-				return ComputeInstallationGraphResult (
-						ComputeInstallationGraphResult::SOURCE_ERROR,
-						"Could not fetch package " + pnode->name + "@" +
-						Architecture::to_string(pnode->architecture) + ":" +
-						i->to_string());
-			}
-
-
-			for (auto& p : pnode->pre_constraints)
-			{
-				if (!p.second->fulfilled (
-							provpkg->get_mdata()->source_version,
-							provpkg->get_mdata()->version))
-				{
-					provpkg = nullptr;
-					break;
-				}
-			}
-
-			if (provpkg)
-			{
-				for (auto& p : pnode->constraints)
-				{
-					if (!p.second->fulfilled (
-								provpkg->get_mdata()->source_version,
-								provpkg->get_mdata()->version))
-					{
-						provpkg = nullptr;
-						break;
-					}
-				}
-			}
-		}
-
-		if (!provpkg)
-		{
-			string pre_str;
-			for (auto& p : pnode->pre_constraints)
-			{
-				if (pre_str.size() > 0)
-					pre_str += " and ";
-
-				pre_str += p.first->name + ": " + p.second->to_string();
-			}
-
-			string str;
-			for (auto& p : pnode->constraints)
-			{
-				if (str.size() > 0)
-					str += " and ";
-
-				str += p.first->name + ": " + p.second->to_string();
-			}
-
-			return ComputeInstallationGraphResult (
-					ComputeInstallationGraphResult::NOT_FULFILLABLE,
-					"No available version of package " + pnode->name + "@" +
-					Architecture::to_string (pnode->architecture) +
-					" fulfills all version requirements: "
-					+ pre_str + " / " + str + ".");
-		}
-
-
-		/* Only change something if it is a different package */
-		auto mdata = provpkg->get_mdata();
-		mdata->state = PKG_STATE_INVALID;
-
-		auto& old_mdata = pnode->chosen_version;
-
-		/* A package can be uniquely identified by it's binary version number */
-		if (!old_mdata || old_mdata->version != mdata->version)
-		{
-			/* Remove old files */
-			for (auto& h : pnode->file_node_handles)
-			{
-				/* If we have entries in the file trie, these must have come
-				 * from somewhere. Hence this node must have a chosen version.
-				 * */
-				auto i = find (h->data.begin(), h->data.end(), old_mdata.get());
-				h->data.erase (i);
-
-				if (h->data.empty())
-					g.file_trie.remove_element (h->get_path());
-			}
-
-			pnode->file_node_handles.clear();
-
-
-			/* Remove old dependencies and constraints */
-			if (old_mdata)
-			{
-				for (auto &d : pnode->pre_dependencies)
-				{
-					d->pre_constraints.erase(pnode);
-					d->pre_dependees.erase (pnode);
-				}
-
-				pnode->pre_dependencies.clear();
-
-				for (auto &d : pnode->dependencies)
-				{
-					d->constraints.erase(pnode);
-					d->dependees.erase (pnode);
-				}
-
-				pnode->dependencies.clear();
-			}
-
-
-			/* Add new files */
-			for (auto& file : *provpkg->get_files ())
-			{
-				if (file.type != FILE_TYPE_DIRECTORY)
-				{
-					FileTrieNodeHandle<vector<PackageMetaData*>> h;
-					h = g.file_trie.find_file (file.path);
-
-					if (!h)
-					{
-						g.file_trie.insert_file (file.path);
-						h = g.file_trie.find_file (file.path);
-					}
-
-					h->data.push_back (mdata.get());
-
-					pnode->file_node_handles.push_back (h);
-				}
-			}
-
-
-			/* Update node */
-			pnode->chosen_version = mdata;
-			pnode->provided_package = provpkg;
-
-			pnode->chosen_version->installation_reason =
-				pnode->manual ? INSTALLATION_REASON_MANUAL : INSTALLATION_REASON_AUTO;
-
-
-			/* Add new dependencies and constraints */
-			for (auto& d : mdata->pre_dependencies)
-			{
-				InstallationGraphNode *pd_node;
-
-				auto i = g.V.find (d.identifier);
-				if (i == g.V.end())
-				{
-					auto tmp = make_shared<InstallationGraphNode> (
-							d.get_name(), d.get_architecture());
-
-					g.V.insert (make_pair (d.identifier, tmp));
-					pd_node = tmp.get();
-				}
-				else
-				{
-					pd_node = i->second.get();
-				}
-
-				pnode->pre_dependencies.push_back (pd_node);
-				pd_node->pre_dependees.insert (pnode);
-				pd_node->pre_constraints.insert (make_pair (pd_node, d.version_formula));
-
-				/* The dependency must become active again. */
-				active.insert (pd_node);
-			}
-
-			for (auto& d : mdata->dependencies)
-			{
-				InstallationGraphNode *pd_node;
-
-				auto i = g.V.find (d.identifier);
-				if (i == g.V.end())
-				{
-					auto tmp = make_shared<InstallationGraphNode> (
-							d.get_name(), d.get_architecture());
-
-					g.V.insert (make_pair (d.identifier, tmp));
-					pd_node = tmp.get();
-				}
-				else
-				{
-					pd_node = i->second.get();
-				}
-
-				pnode->dependencies.push_back (pd_node);
-				pd_node->dependees.insert (pnode);
-				pd_node->constraints.insert (make_pair (pd_node, d.version_formula));
-
-				/* The dependency must become active again. */
-				active.insert (pd_node);
-			}
-		}
+		return ComputeInstallationGraphResult(move(solver->get_G()));
 	}
-
-
-	/* Remove conflicting packages */
-	/* First, build a set of wanted packages */
-	set<pair<const string, int>> wanted_packages;
-	for (auto& np : new_packages)
-		wanted_packages.insert (make_pair (np.first.first, np.first.second));
-
-	/* Actually remove packages */
-	for (auto iv = g.V.begin(); iv != g.V.end();)
+	else
 	{
-		auto v = iv->second;
-		bool next_v_selected = false;
+		string msg;
+		for (const auto& error : solver->get_errors())
+			msg += (msg.size() ? "\n" : "") + error;
 
-		for (auto h : v->file_node_handles)
-		{
-			if (h->data.size() > 1)
-			{
-				/* Conflict. Find out which package to keep and remove the
-				 * others. */
-				PackageMetaData* pkg_to_keep = nullptr;
-
-				for (auto mdata : h->data)
-				{
-					pkg_to_keep = mdata;
-
-					if (
-							mdata->state == PKG_STATE_INVALID ||
-							mdata->state == PKG_STATE_PREINST_CHANGE ||
-							mdata->state == PKG_STATE_UNPACK_CHANGE ||
-							mdata->state == PKG_STATE_WAIT_OLD_REMOVED ||
-							mdata->state == PKG_STATE_CONFIGURE_CHANGE
-							)
-					{
-						break;
-					}
-				}
-
-				/* The vector will be altered. Hence we need a copy of it. */
-				vector<PackageMetaData*> to_remove;
-				to_remove.reserve (h->data.size());
-
-				for (auto mdata : h->data)
-					if (mdata != pkg_to_keep)
-						to_remove.push_back (mdata);
-
-				/* Remove the packages that shall not be kept. */
-				auto current_node_key = iv->first;
-
-				for (auto mdata : to_remove)
-				{
-					auto res = cig_remove_node (g, mdata, wanted_packages);
-					if (!res.success)
-					{
-						return ComputeInstallationGraphResult (
-								ComputeInstallationGraphResult::NOT_FULFILLABLE,
-								res.error);
-					}
-				}
-
-				/* Update the iterator and continue the loop over packages. */
-				auto iv2 = g.V.lower_bound (current_node_key);
-
-				if (iv2 != iv)
-				{
-					next_v_selected = true;
-					iv = iv2;
-					break;
-				}
-			}
-		}
-
-		if (!next_v_selected)
-			++iv;
+		return ComputeInstallationGraphResult(msg);
 	}
-
-	return ComputeInstallationGraphResult(g);
-}
-
-CIGRemoveNodeResult cig_remove_node (
-		InstallationGraph& g,
-		PackageMetaData* mdata,
-		set<pair<const string, int>> wanted_packages)
-{
-	list<InstallationGraphNode*> to_remove;
-
-	to_remove.push_back (g.V.find (make_pair (mdata->name, mdata->architecture))->second.get());
-
-	for (auto jv = to_remove.begin(); jv != to_remove.end();)
-	{
-		auto v = *jv;
-
-		/* Check if the node is allowed to be removed and if yes, remove it.
-		 * Otherwise return an error message. */
-		if (wanted_packages.find (make_pair (v->name, v->architecture)) != wanted_packages.end())
-		{
-			return CIGRemoveNodeResult ("Invalid configuration: "
-					+ v->name + "@" + Architecture::to_string (v->architecture) +
-					" cannot be installed due to conflicts.");
-		}
-
-		/* Add the dependees to the list of packages to remove. Their backwards
-		 * edges can stay in place as the whole node will be removed before this
-		 * function returns and this function does not use the
-		 * installation-graph-edges. */
-		for (auto u : v->pre_dependees)
-			to_remove.push_back (u);
-
-		for (auto u : v->dependees)
-			to_remove.push_back (u);
-
-		/* Remove the node's files */
-		for (auto& h : v->file_node_handles)
-		{
-			/* If we have entries in the file trie, these must have come
-			 * from somewhere. Hence this node must have a chosen version.
-			 * */
-			auto i = find (h->data.begin(), h->data.end(), v->chosen_version.get());
-			h->data.erase (i);
-
-			if (h->data.empty())
-				g.file_trie.remove_element (h->get_path());
-		}
-
-		/* Remove the node from the graph */
-		g.V.erase (make_pair (v->name, v->architecture));
-
-		/* Process the next node */
-		to_remove.erase (jv++);
-	}
-
-	return CIGRemoveNodeResult();
-}
-
-
-InstallationGraphNode::InstallationGraphNode(
-		const string &name, const int architecture)
-	:
-		name(name), architecture(architecture)
-{
-}
-
-InstallationGraphNode::InstallationGraphNode(
-		const string &name, const int architecture, bool this_is_installed,
-		shared_ptr<PackageMetaData> chosen_version)
-	:
-		name(name), architecture(architecture),
-		chosen_version(chosen_version),
-		currently_installed_version(this_is_installed ? optional(chosen_version->version) : nullopt)
-{
-	if (this_is_installed && chosen_version->installation_reason == INSTALLATION_REASON_MANUAL)
-		manual = true;
-}
-
-
-void InstallationGraph::add_node(shared_ptr<InstallationGraphNode> n)
-{
-	V.insert({{n->name, n->architecture}, n});
 }
 
 
 /* To serialize an installation graph. */
-void visit (contracted_ig_node H[], vector<InstallationGraphNode*>& serialized, int v)
+void visit (contracted_ig_node H[], vector<IGNode*>& serialized, int v)
 {
 	/* There are a more sophisticated approaches to installing one SCC ...
 	 */
-	for (InstallationGraphNode *ig_node : H[v].original_nodes)
+	for (IGNode *ig_node : H[v].original_nodes)
 		serialized.push_back (ig_node);
 
 	for (int w : H[v].children)
@@ -578,15 +162,15 @@ void visit (contracted_ig_node H[], vector<InstallationGraphNode*>& serialized, 
 
 /* If @param pre_deps is set, pre-dependencies are used instead of dependencies.
  * */
-vector<InstallationGraphNode*> serialize_igraph (
-		const InstallationGraph& igraph, bool pre_deps)
+vector<IGNode*> serialize_igraph (
+		const installation_graph_t& igraph, bool pre_deps)
 {
 	/* Construct a data structure to hold the nodes' working variables and
 	 * adjacency lists. */
-	int cnt_nodes = igraph.V.size();
+	int cnt_nodes = igraph.size();
 	unique_ptr<scc_node[]> nodes = unique_ptr<scc_node[]> (new scc_node[cnt_nodes]);
 
-	auto iter = igraph.V.begin();
+	auto iter = igraph.begin();
 
 	for (int i = 0; i < cnt_nodes; i++)
 	{
@@ -598,16 +182,16 @@ vector<InstallationGraphNode*> serialize_igraph (
 
 	for (int i = 0; i < cnt_nodes; i++)
 	{
-		auto ig_node = (InstallationGraphNode*) nodes[i].data;
+		auto ig_node = (IGNode*) nodes[i].data;
 
 		if (pre_deps)
 		{
-			for (InstallationGraphNode* dep : ig_node->pre_dependencies)
+			for (IGNode* dep : ig_node->pre_dependencies)
 				nodes[i].children.push_back (dep->algo_priv);
 		}
 		else
 		{
-			for (InstallationGraphNode* dep : ig_node->dependencies)
+			for (IGNode* dep : ig_node->dependencies)
 				nodes[i].children.push_back (dep->algo_priv);
 		}
 	}
@@ -626,7 +210,7 @@ vector<InstallationGraphNode*> serialize_igraph (
 	 * edges in forward direction. */
 	for (int v = 0; v < cnt_nodes; v++)
 	{
-		H[nodes[v].SCC].original_nodes.push_back ((InstallationGraphNode*) nodes[v].data);
+		H[nodes[v].SCC].original_nodes.push_back ((IGNode*) nodes[v].data);
 
 		for (int w : nodes[v].children)
 		{
@@ -640,7 +224,7 @@ vector<InstallationGraphNode*> serialize_igraph (
 	}
 
 	/* Obviously it's enough to ensure that all parents were visited before. */
-	vector<InstallationGraphNode*> serialized;
+	vector<IGNode*> serialized;
 
 	for (int v = 0; v < count_sccs; v++)
 	{
@@ -654,17 +238,20 @@ vector<InstallationGraphNode*> serialize_igraph (
 
 vector<shared_ptr<PackageMetaData>> find_packages_to_remove (
 		vector<shared_ptr<PackageMetaData>> installed_packages,
-		const InstallationGraph& igraph)
+		const installation_graph_t& igraph)
 {
 	vector<shared_ptr<PackageMetaData>> to_remove;
 
 	for (auto pkg : installed_packages)
 	{
-		auto iv = igraph.V.find (make_pair (pkg->name, pkg->architecture));
-		if (iv != igraph.V.end())
+		auto iv = igraph.find (make_pair (pkg->name, pkg->architecture));
+		if (iv != igraph.end())
 		{
-			if (iv->second->currently_installed_version != iv->second->chosen_version->version)
+			if (iv->second->installed_version->get_binary_version() !=
+					iv->second->chosen_version->get_binary_version())
+			{
 				to_remove.push_back (pkg);
+			}
 		}
 		else
 		{
@@ -677,9 +264,9 @@ vector<shared_ptr<PackageMetaData>> find_packages_to_remove (
 
 compute_operations_result compute_operations (
 		PackageDB& pkgdb,
-		InstallationGraph& igraph,
+		installation_graph_t& igraph,
 		vector<shared_ptr<PackageMetaData>>& pkgs_to_remove,
-		vector<InstallationGraphNode*>& ig_nodes)
+		vector<IGNode*>& ig_nodes)
 {
 	compute_operations_result result;
 
@@ -688,23 +275,43 @@ compute_operations_result compute_operations (
 	 * are already configured cannot be adjacent to packages from set A, because
 	 * otherwise they they would replace a package. However mark them as not
 	 * used to be safe. */
-	for (auto& p : igraph.V)
+	for (auto& p : igraph)
 		p.second->algo_priv = -1;
 
 	int i = 0;
 
 	for (auto ig_node : ig_nodes)
 	{
-		if (ig_node->currently_installed_version &&
-				ig_node->currently_installed_version == ig_node->chosen_version->version &&
+		if (ig_node->installed_version &&
+				ig_node->installed_version->get_binary_version() == ig_node->chosen_version->get_binary_version() &&
 				ig_node->chosen_version->state == PKG_STATE_CONFIGURED &&
-				ig_node->manual == (ig_node->chosen_version->installation_reason == INSTALLATION_REASON_MANUAL))
+				ig_node->manual == (
+					dynamic_pointer_cast<InstalledPackageVersion>(ig_node->chosen_version)
+						->installation_reason == INSTALLATION_REASON_MANUAL))
 		{
 			continue;
 		}
 
 		result.B.emplace_back (-1, ig_node);
 		ig_node->algo_priv = i++;
+	}
+
+	/* Build a file trie with all package's files */
+	FileTrie<vector<PackageMetaData*>> file_trie;
+
+	/* Add packages from installation graph G */
+	for (auto& [id, pnode] : igraph)
+	{
+		for (const auto& file : pnode->get_files())
+		{
+			auto chosen_version = pnode->chosen_version;
+			auto mdata = chosen_version->is_installed() ?
+				dynamic_pointer_cast<InstalledPackageVersion>(chosen_version)->get_mdata() :
+				dynamic_pointer_cast<ProvidedPackageVersion>(chosen_version)->get_mdata();
+
+			file_trie.insert_file(file);
+			file_trie.find_file(file)->data.append(mdata);
+		}
 	}
 
 	/* Build the bipartite graph */
@@ -722,23 +329,23 @@ compute_operations_result compute_operations (
 			 * */
 			if (file.type != FILE_TYPE_DIRECTORY)
 			{
-				auto h = igraph.file_trie.find_file (file.path);
+				auto h = file_trie.find_file (file.path);
 				if (h)
 				{
 					/* Will usually be only one */
 					for (auto mdata : h->data)
 					{
-						auto iv = igraph.V.find (make_pair (mdata->name, mdata->architecture));
+						auto iv = igraph.find (make_pair (mdata->name, mdata->architecture));
 
 						/* Should not happen, but be safe. */
-						if (iv == igraph.V.end() || iv->second->algo_priv == -1)
+						if (iv == igraph.end() || iv->second->algo_priv == -1)
 						{
 							throw gp_exception ("INTERNAL ERROR: depress::compute_operations: "
 									"Conflict with a file that does not belong "
 									"to a package that will be new in the final configuration.");
 						}
 
-						shared_ptr<InstallationGraphNode> v = iv->second;
+						shared_ptr<IGNode> v = iv->second;
 
 						if (find (
 									op.involved_ig_nodes.begin(),
@@ -759,8 +366,8 @@ compute_operations_result compute_operations (
 		 * must be added even if the two versions do not collide as only one
 		 * version of a package might be installed in an accepted state (i.e.
 		 * configured) at a time. */
-		auto new_i = igraph.V.find (make_pair (pkg->name, pkg->architecture));
-		if (new_i != igraph.V.end())
+		auto new_i = igraph.find (make_pair (pkg->name, pkg->architecture));
+		if (new_i != igraph.end())
 		{
 			auto v = new_i->second;
 
@@ -799,8 +406,8 @@ compute_operations_result compute_operations (
 		}
 		else
 		{
-			if (a.involved_ig_nodes[0]->chosen_version->name == a.pkg->name &&
-					a.involved_ig_nodes[0]->chosen_version->architecture == a.pkg->architecture)
+			if (a.involved_ig_nodes[0]->chosen_version->get_name() == a.pkg->name &&
+					a.involved_ig_nodes[0]->chosen_version->get_architecture() == a.pkg->architecture)
 			{
 				a.operation = pkg_operation::CHANGE_REMOVE;
 			}
@@ -818,8 +425,8 @@ compute_operations_result compute_operations (
 			b.operation = pkg_operation::INSTALL_NEW;
 		}
 		else if (b.involved_packages.size() == 1 &&
-				b.involved_packages[0]->name == b.ig_node->chosen_version->name &&
-				b.involved_packages[0]->architecture == b.ig_node->chosen_version->architecture)
+				b.involved_packages[0]->get_name() == b.ig_node->chosen_version->get_name() &&
+				b.involved_packages[0]->get_architecture() == b.ig_node->chosen_version->get_architecture())
 		{
 			b.operation = pkg_operation::CHANGE_INSTALL;
 		}
@@ -901,7 +508,7 @@ vector<pkg_operation> order_operations (compute_operations_result& bigraph, bool
 
 vector<pkg_operation> generate_installation_order_from_igraph (
 		PackageDB& pkgdb,
-		InstallationGraph& igraph,
+		installation_graph_t& igraph,
 		vector<shared_ptr<PackageMetaData>>& installed_packages,
 		bool pre_deps)
 {

@@ -40,8 +40,8 @@ namespace depres
 		std::shared_ptr<IGNode>>;
 
 	using selected_package_t = std::pair<
-		std::pair<std::string, int>,
-		std::shared_ptr<PackageConstraints::Formula>>;
+		std::pair<const std::string, int>,
+		std::shared_ptr<const PackageConstraints::Formula>>;
 
 	using cb_list_package_versions_t = std::function<
 		std::vector<VersionNumber>(

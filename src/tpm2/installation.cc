@@ -54,7 +54,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 
 	depres::ComputeInstallationGraphResult r =
 		depres::compute_installation_graph(params, installed_packages, pkgdb,
-				PackageProvider::create (params), new_packages);
+				PackageProvider::create (params), new_packages, false);
 
 	if (r.status != depres::ComputeInstallationGraphResult::SUCCESS)
 	{
@@ -178,7 +178,7 @@ bool install_packages(shared_ptr<Parameters> params)
 
 	depres::ComputeInstallationGraphResult comp_igraph_res =
 		depres::compute_installation_graph (
-				params, installed_packages, pkgdb, pprov, new_packages);
+				params, installed_packages, pkgdb, pprov, new_packages, true);
 
 	if (comp_igraph_res.status != depres::ComputeInstallationGraphResult::SUCCESS)
 	{
@@ -188,7 +188,7 @@ bool install_packages(shared_ptr<Parameters> params)
 		return false;
 	}
 
-	depres::InstallationGraph& igraph = comp_igraph_res.g;
+	depres::installation_graph_t& igraph = comp_igraph_res.g;
 
 
 	/* Determine an unpack and a configuration order */
@@ -458,7 +458,7 @@ bool install_packages(shared_ptr<Parameters> params)
 				op.operation == depres::pkg_operation::CHANGE_INSTALL ||
 				op.operation == depres::pkg_operation::REPLACE_INSTALL)
 		{
-			depres::InstallationGraphNode* ig_node = op.ig_node;
+			depres::IGNode* ig_node = op.ig_node;
 			shared_ptr<PackageMetaData> mdata = ig_node->chosen_version;
 
 			/* Check for states that need archives */

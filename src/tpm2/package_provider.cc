@@ -19,7 +19,11 @@ ProvidedPackage::ProvidedPackage (
 		shared_ptr<PackageMetaData> mdata,
 		const tf::TableOfContents& toc,
 		shared_ptr<tf::ReadStream> rs)
-	: mdata(mdata), toc(toc), rs(rs)
+	:
+		PackageVersion(mdata.name, mdata.architecture, mdata.source_version, mdata.version),
+		mdata(mdata),
+		toc(toc),
+		rs(rs)
 {
 	if (!mdata || !rs)
 		throw invalid_argument ("mdata or rs nullptr");
@@ -35,13 +39,72 @@ void ProvidedPackage::ensure_read_stream()
 }
 
 
-shared_ptr<PackageMetaData> ProvidedPackage::get_mdata()
+/* PackageVersion interface */
+bool ProvidedPackage::is_installed() const
+{
+	return false;
+}
+
+vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>>
+ProvidedPackage::get_dependencies()
+{
+	vector<pair<string, int>, shared_ptr<const PackageConstraints::Formula>> deps;
+	for (auto& dep : mdata->dependencies)
+		deps.append(make_pair(dep.identifier, dep.version_formula));
+
+	return deps;
+}
+
+vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>>
+ProvidedPackage::get_pre_dependencies()
+{
+	vector<pair<string, int>, shared_ptr<const PackageConstraints::Formula>> deps;
+	for (auto& dep : mdata->pre_dependencies)
+		deps.append(make_pair(dep.identifier, dep.version_formula));
+
+	return deps;
+}
+
+const vector<string> &get_files()
+{
+	if (!file_paths_populated)
+	{
+		for (auto& file : get_file_list())
+		{
+			if (file.type != FILE_TYPE_DIRECTORY)
+				file_paths.append(file.path);
+		}
+
+		file_paths_populated = true;
+	}
+
+	return file_paths;
+}
+
+const vector<string> &get_directories()
+{
+	if (!directory_paths_populated)
+	{
+		for (auto& file : get_file_list())
+		{
+			if (file.type == FILE_TYPE_DIRECTORY)
+				directory_paths.append(file.path);
+		}
+
+		directory_paths_populated = true;
+	}
+
+	return directory_paths;
+}
+
+
+shared_ptr<PackageMetaData> ProvidedPackage::get_mdata() const
 {
 	return mdata;
 }
 
 
-shared_ptr<FileList> ProvidedPackage::get_files()
+shared_ptr<FileList> ProvidedPackage::get_file_list()
 {
 	if (!files)
 	{

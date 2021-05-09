@@ -11,13 +11,14 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "package_meta_data.h"
 #include "dependencies.h"
+#include "depres_common.h"
+#include "file_trie.h"
 #include "package_constraints.h"
+#include "package_db.h"
+#include "package_meta_data.h"
 #include "package_provider.h"
 #include "stored_maintainer_scripts.h"
-#include "file_trie.h"
-#include "package_db.h"
 
 
 namespace depres
@@ -26,126 +27,72 @@ namespace depres
 	struct ComputeInstallationGraphResult;
 
 
+	/* InstalledPackageVersion to provide installed packages to the solver */
+	/* TODO: Common base with ProvidedPackageVersion for get_mdata and a public
+	 * attribute 'provided_package' for 'Fetch missing archives...' in
+	 * installation.cc. */
+	class InstalledPackageVersion : public PackageVersion
+	{
+	protected:
+		std::shared_ptr<PackageMetaData> mdata;
+		PackageDB& pkgdb;
+
+		vector<string> file_paths;
+		vector<string> directory_paths;
+
+	public:
+		InstalledPackageVersion(std::shared_ptr<PackageMetaData> mdata, PackageDB& pkgdb);
+
+		/* PackageVersion interface */
+		bool is_installed() const override;
+
+		std::vector<
+				std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
+			> get_dependencies() override;
+
+		std::vector<
+				std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
+			> get_pre_dependencies() override;
+
+		const std::vector<std::string> &get_files() override;
+		const std::vector<std::string> &get_directories() override;
+
+		/* Original methods */
+		std::shared_ptr<PackageMetaData> get_mdata() const;
+
+		/* Shortcut for get_mdata()->installation_reason ==
+		 * INSTALLATION_REASON_AUTO */
+		bool installed_automatically() const;
+	};
+
+
+	/* Solve the packaging problem given a particular configuration and solver
+	 * parameters */
 	ComputeInstallationGraphResult compute_installation_graph(
 			std::shared_ptr<Parameters> params,
 			std::vector<std::shared_ptr<PackageMetaData>> installed_packages,
 			PackageDB& pkgdb,
 			std::shared_ptr<PackageProvider> pprov,
-			std::vector<
-				std::pair<
-					std::pair<const std::string, int>,
-					std::shared_ptr<const PackageConstraints::Formula>
-				>
-			> new_packages);
-
-
-	struct InstallationGraphNode
-	{
-		std::string name;
-		int architecture;
-		std::shared_ptr<PackageMetaData> chosen_version;
-
-		std::optional<VersionNumber> currently_installed_version;
-
-		/* One of these two must be provided ... */
-		std::shared_ptr<ProvidedPackage> provided_package;
-		std::shared_ptr<StoredMaintainerScripts> sms;
-
-		bool manual = false;
-
-
-		/* These formulae are joined conjunctively. In the runtime constraints
-		 * may be one element with nullptr as key, which encodes a user
-		 * specifies constraint. */
-		std::map<InstallationGraphNode*,
-			std::shared_ptr<const PackageConstraints::Formula>> pre_constraints;
-
-		std::map<InstallationGraphNode*,
-			std::shared_ptr<const PackageConstraints::Formula>> constraints;
-
-
-		/* To form the graph */
-		std::list<InstallationGraphNode*> pre_dependencies;
-		std::set<InstallationGraphNode*> pre_dependees;
-
-		std::list<InstallationGraphNode*> dependencies;
-		std::set<InstallationGraphNode*> dependees;
-
-
-		/* A list of file trie nodes associated with the package for easier
-		 * removal (contains less storage than a list of filepaths and is faster
-		 * than traversing the file trie) . */
-		std::vector<FileTrieNodeHandle<std::vector<PackageMetaData*>>> file_node_handles;
-
-
-		/* Private data to use by algorithms etc. Must not be relied on to be
-		 * present after the function that uses them exits, however it is not
-		 * altered by the graph's members. Only by third entities. */
-		ssize_t algo_priv;
-
-
-		/* Constructors */
-		InstallationGraphNode(const std::string &name, const int architecture);
-
-		/* @param this_is_installed true means installed version + manual will
-		 *     be set automatically from @param chosen_version. */
-		InstallationGraphNode(const std::string &name, const int architecture,
-				bool this_is_installed,
-				std::shared_ptr<PackageMetaData> chosen_version);
-	};
-
-	struct InstallationGraph
-	{
-		using nodeset_type = std::map<std::pair<std::string, int>, std::shared_ptr<InstallationGraphNode>>;
-
-		/* A map (name, architecture) -> InstallationGraphNode to easily find
-		 * nodes for adding edges. */
-		nodeset_type V;
-
-		/* The final file trie. It does not contain directories. */
-		FileTrie<std::vector<PackageMetaData*>> file_trie;
-
-		void add_node(std::shared_ptr<InstallationGraphNode> n);
-	};
+			const std::vector<selected_package_t> &selected_packages,
+			bool prefer_upgrade);
 
 
 	struct ComputeInstallationGraphResult
 	{
-		static const int SUCCESS = 0;
-		static const int INVALID_CURRENT_CONFIG = 1;
-		static const int NOT_FULFILLABLE = 2;
-		static const int SOURCE_ERROR = 3;
-
-		const int status;
+		const bool error;
 		const std::string error_message;
 
-		InstallationGraph g;
+		installation_graph_t G;
 
 		/* Constructors */
-		ComputeInstallationGraphResult(int status, const std::string &msg)
-			: status(status), error_message(msg)
+		ComputeInstallationGraphResult(const std::string &msg)
+			: error(true), error_message(msg)
 		{}
 
-		ComputeInstallationGraphResult(InstallationGraph g)
-			: status(SUCCESS), g(g)
+		ComputeInstallationGraphResult(installation_graph_t G)
+			: error(false), G(G)
 		{}
 	};
-
-
-	struct CIGRemoveNodeResult
-	{
-		bool success;
-		std::string error;
-
-		CIGRemoveNodeResult () : success(true) {};
-		CIGRemoveNodeResult (const std::string& error)
-			: success(false), error(error) {}
-	};
-
-	CIGRemoveNodeResult cig_remove_node (
-			InstallationGraph& g,
-			PackageMetaData* mdata,
-			std::set<std::pair<const std::string, int>> wanted_packages);
 
 
 	/* To serialize an installation graph. This does only order the nodes that
@@ -154,11 +101,11 @@ namespace depres
 	 * be installed. The installation graph should only represent the target
 	 * configuration, not how to get there. And this function helps in finding
 	 * the latter, but does only one part of the work. */
-	std::vector<InstallationGraphNode*> serialize_igraph (
-			const InstallationGraph& igraph, bool pre_deps);
+	std::vector<IGNode*> serialize_igraph (
+			const installation_graph_t& igraph, bool pre_deps);
 
 	struct contracted_ig_node {
-		std::list<InstallationGraphNode*> original_nodes;
+		std::list<IGNode*> original_nodes;
 
 		std::set<int> children;
 		
@@ -174,7 +121,7 @@ namespace depres
 	 * */
 	std::vector<std::shared_ptr<PackageMetaData>> find_packages_to_remove (
 			std::vector<std::shared_ptr<PackageMetaData>> installed_packages,
-			const InstallationGraph& igraph);
+			const installation_graph_t& igraph);
 
 
 	/* Add information to packages and igraph nodes about why they have to be
@@ -202,12 +149,12 @@ namespace depres
 		char operation;
 
 		/* Removal operations use the PackageMetaData fields, install operations
-		 * the InstallationGraphNode* fields. */
+		 * the IGNode* fields. */
 		const std::shared_ptr<PackageMetaData> pkg;
-		InstallationGraphNode * const ig_node;
+		IGNode * const ig_node;
 
 		std::vector<std::shared_ptr<PackageMetaData>> involved_packages;
-		std::vector<InstallationGraphNode*> involved_ig_nodes;
+		std::vector<IGNode*> involved_ig_nodes;
 
 
 		/* Like always */
@@ -218,7 +165,7 @@ namespace depres
 			: operation(operation), pkg(pkg), ig_node(nullptr)
 		{ }
 
-		pkg_operation (char operation, InstallationGraphNode* ig_node)
+		pkg_operation (char operation, installation_graph_t* ig_node)
 			: operation(operation), pkg(nullptr), ig_node(ig_node)
 		{ }
 	};
@@ -240,9 +187,9 @@ namespace depres
 
 	compute_operations_result compute_operations (
 			PackageDB& pkgdb,
-			InstallationGraph& igraph,
+			installation_graph_t& igraph,
 			std::vector<std::shared_ptr<PackageMetaData>>& pkgs_to_remove,
-			std::vector<InstallationGraphNode*>& ig_nodes);
+			std::vector<IGNode*>& ig_nodes);
 
 
 	/* Order the operations from compute_operations into one sequence that can
@@ -264,7 +211,7 @@ namespace depres
 	 * reality. */
 	std::vector<pkg_operation> generate_installation_order_from_igraph (
 			PackageDB& pkgdb,
-			InstallationGraph& igraph,
+			installation_graph_t& igraph,
 			std::vector<std::shared_ptr<PackageMetaData>>& installed_packages,
 			bool pre_deps);
 

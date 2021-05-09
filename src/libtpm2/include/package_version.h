@@ -59,11 +59,11 @@ public:
 	}
 
 	virtual std::vector<
-			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+			std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
 		> get_dependencies() = 0;
 
 	virtual std::vector<
-			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+			std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
 		> get_pre_dependencies() = 0;
 
 	/* Get a list of of absolute paths of contained files and directories.
