@@ -9,6 +9,19 @@ using namespace depres;
 namespace pc = PackageConstraints;
 
 
+/* Trimming a string. See e.g. https://stackoverflow.com/a/1798170 */
+string trim(const string& s)
+{
+	auto start = s.find_first_not_of(" \t");
+	auto stop = s.find_last_not_of(" \t");
+
+	if (start == string::npos)
+		return "";
+
+	return s.substr(start, stop - start + 1);
+}
+
+
 PackageVersionAdaptor::PackageVersionAdaptor(std::shared_ptr<Scenario::Package> scenario_package)
 	: PackageVersion(
 			scenario_package->name, scenario_package->arch,
@@ -155,32 +168,30 @@ pair<double, vector<string>> ScenarioRunner::evaluate_result()
 		{
 			reasons.push_back("Original solver errors:");
 			for (auto &error : solver_errors)
-				reasons.push_back(error);
+				reasons.push_back("  " + error);
 
 			bool ok = true;
 
-			if (solver_errors.size() != scenario->desired_errors.size())
+			/* Try to find desired errors in the solver's output */
+			auto i = scenario->desired_errors.begin();
+			for (auto& error : solver_errors)
 			{
-				ok = false;
-				reasons.push_back("Solver failed and solver_errors.size() != desired_errors.size().");
+				if (i == scenario->desired_errors.end())
+					break;
+
+				if (trim(error).rfind(*i, 0) == 0)
+					i++;
 			}
 
-			if (ok)
+			if (i != scenario->desired_errors.end())
 			{
-				auto i = solver_errors.begin();
+				ok = false;
 
-				for (const auto& desired : scenario->desired_errors)
-				{
-					const auto& error = *i++;
-					if (error.rfind(desired, 0) != 0)
-					{
-						ok = false;
-						reasons.push_back(
-								"Solver failed but did not return an error "
-								"message starting with: \"" + desired + "\".");
-						break;
-					}
-				}
+				reasons.push_back("The following error message prefixes were "
+						"not found in the solver's output (or in the wrong order):");
+
+				for(; i != scenario->desired_errors.end(); i++)
+					reasons.push_back("  " + *i);
 			}
 
 			if (ok)

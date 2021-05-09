@@ -5,12 +5,13 @@
 #include <algorithm>
 #include <deque>
 #include "depres2.h"
+#include "architecture.h"
 
 #include <iostream>
 
 using namespace std;
 
-#define LOG_DEBUG
+// #define LOG_DEBUG
 
 /* Some macros for printing to the console */
 #define PRINT_WARNING(X) (cerr << "Depres2: Warning: " << X)
@@ -173,7 +174,7 @@ float Depres2Solver::compute_alpha(
 	}
 
 	/* Combine components into a score of the package */
-	float alpha = 1.f * c + 2.f * d + 4.f * f + 1.f * b;
+	float alpha = 1.f * c + 2.f * d + 8.f * f + 1.f * b;
 
 	PRINT_DEBUG(pv->identifier_to_string() + ":" + version->get_binary_version().to_string() <<
 		" c = " << c << ", d = " << d << ", f = " << f << ", b = " << b <<
@@ -238,6 +239,28 @@ void Depres2Solver::remove_unreachable_nodes()
 			if (is_node_unreachable(*u))
 				to_remove.push_back(G.find(u->identifier)->second);
 		}
+	}
+}
+
+void Depres2Solver::format_loop_error_message()
+{
+	/* loop_cnt, name, arch, version, alpha */
+	vector<tuple<int, string, int, VersionNumber, float>> pkgs;
+
+	for (auto& [k,v] : previous_versions)
+	{
+		if (v > 8)
+			pkgs.push_back({v, get<0>(k), get<1>(k), get<2>(k), get<3>(k)});
+	}
+
+	sort(pkgs.begin(), pkgs.end());
+
+	errors.push_back("Package versions probably causing the algorithm's oscillation:");
+	for (auto& [loop_cnt, name, arch, version, alpha] : pkgs)
+	{
+		errors.push_back(
+				"  " + name + "@" + Architecture::to_string(arch) + ":" + version.to_string() +
+				" loop_cnt: " + to_string(loop_cnt) + ", alpha: " + to_string(alpha));
 	}
 }
 
@@ -340,12 +363,17 @@ bool Depres2Solver::solve()
 		auto pv = dynamic_cast<Depres2IGNode*>(*iv);
 		active.erase(iv);
 
+		/* Don't evaluate a package that was marked for removal. */
+		if (pv->marked_for_removal)
+			continue;
+
 		/* Find the best-fitting version for the active package */
 		auto version_numbers = cb_list_package_versions(pv->get_name(), pv->get_architecture());
 		sort(version_numbers.begin(), version_numbers.end());
 
 		int i = -1;
 		float alpha_max = -INFINITY;
+		float alpha_installed = 0.f;
 		shared_ptr<PackageVersion> best_version = nullptr;
 
 		for (auto& version_number : version_numbers)
@@ -365,6 +393,9 @@ bool Depres2Solver::solve()
 					pv->identifier,
 					pv,
 					version, i, version_numbers.size());
+
+			if (pv->installed_version && *(pv->installed_version) == *version)
+				alpha_installed = alpha;
 
 			/* Choose version with highest alpha */
 			if (alpha > alpha_max)
@@ -410,6 +441,8 @@ bool Depres2Solver::solve()
 					pv->identifier_to_string() + ":" + get<2>(loop_id).to_string() +
 					" was choosen twice with alpha = " + to_string(get<3>(loop_id)));
 
+			format_loop_error_message();
+
 			return false;
 		}
 
@@ -420,6 +453,38 @@ bool Depres2Solver::solve()
 		{
 			for (auto& file : pv->chosen_version->get_files())
 				files.remove_element(file);
+		}
+
+		/* If the package is installed and conflicts with another package, is
+		 * not selected, and no 'better' version has been found than the
+		 * installed one, mark the package for removal. */
+		if (pv->installed_version && !pv->is_selected)
+		{
+			/* !is_selected -> c = 0 */
+			/* New chosen version has a file conflict or the installed version
+			 * has a file conflict and the newly chosen version is not newer.
+			 *
+			 * Note that hardcoding the requirement for a newer version here
+			 * breaks with the score-based approach to some degree and enforces
+			 * a specific behavior on the build system: when files are moved
+			 * from a package, the new version of the package (having fewer
+			 * files) will have a newer version number. However this should be
+			 * fine as long as relative time is strictly monotonic. */
+			if (
+					alpha_max < -6.5f || (
+						alpha_installed < -6.5f &&
+						alpha_installed > - 31.f &&
+						*best_version < *(pv->installed_version)
+					)
+			   )
+			{
+				PRINT_DEBUG("  marking for removal: alpha_max = " << alpha_max <<
+						" / alpha_installed: " << alpha_installed);
+
+				eject_node(*pv, false);
+				pv->marked_for_removal = true;
+				continue;
+			}
 		}
 
 		/* Set new version and remove/add edges */
@@ -439,68 +504,138 @@ bool Depres2Solver::solve()
 		PRINT_DEBUG("Ejecting newly unsatisfied dependencies and pre-dependencies ..." << endl);
 		for (auto w : pv->dependencies)
 		{
-			if (w->chosen_version && !w->version_is_satisfying())
+			if (dynamic_cast<Depres2IGNode*>(w)->marked_for_removal)
 			{
-				PRINT_DEBUG("    " << w->identifier_to_string() << endl);
-				eject_node(*w, false);
+				pv->marked_for_removal = true;
 			}
+			else
+			{
+				if (w->chosen_version && !w->version_is_satisfying())
+				{
+					PRINT_DEBUG("    " << w->identifier_to_string() << endl);
+					eject_node(*w, false);
+				}
 
-			active.insert(w);
+				active.insert(w);
+			}
 		}
 
 		for (auto w : pv->pre_dependencies)
 		{
-			if (w->chosen_version && !w->version_is_satisfying())
+			if (dynamic_cast<Depres2IGNode*>(w)->marked_for_removal)
 			{
-				PRINT_DEBUG("    " << w->identifier_to_string() << " (pre)" << endl);
-				eject_node(*w, false);
+				pv->marked_for_removal = true;
 			}
+			else
+			{
+				if (w->chosen_version && !w->version_is_satisfying())
+				{
+					PRINT_DEBUG("    " << w->identifier_to_string() << " (pre)" << endl);
+					eject_node(*w, false);
+				}
 
-			active.insert(w);
+				active.insert(w);
+			}
 		}
 
-		/* If necessarry, eject conflicting dependees as well */
-		/* A dependee can only be conflicting if it imposes version constraints
-		 * or has common files. In both cases it can be detected without reverse
-		 * edges. */
-		if (alpha_max < 0.f)
+		if (pv->marked_for_removal)
 		{
-			auto constrs = pv->constraints;
-			for (auto [source, constr] : constrs)
+			/* A dependency is marked for removal, hence this package was marked
+			 * for removal, too. Eject the package */
+			eject_node(*pv, false);
+		}
+		else
+		{
+			/* If necessarry, eject conflicting dependees as well */
+			/* A dependee can only be conflicting if it imposes version constraints
+			 * or has common files. In both cases it can be detected without reverse
+			 * edges. */
+			if (alpha_max < 0.f)
 			{
-				if (source && !constr->fulfilled(
-							pv->chosen_version->get_source_version(),
-							pv->chosen_version->get_binary_version()))
+				auto constrs = pv->constraints;
+				for (auto [source, constr] : constrs)
 				{
-					PRINT_DEBUG("  Ejecting dependee " << source->identifier_to_string() << "." << endl);
-					eject_node(*source, true);
+					if (source && !constr->fulfilled(
+								pv->chosen_version->get_source_version(),
+								pv->chosen_version->get_binary_version()))
+					{
+						PRINT_DEBUG("  Ejecting dependee " << source->identifier_to_string() << "." << endl);
+						eject_node(*source, true);
+					}
 				}
 			}
+
+			/* Eject packages which conflict by their files and insert the package's
+			 * files into the current configuration (which must be valid but may be
+			 * incomplete (that is may have unfulfilled dependencies but must not
+			 * have conflicts)). */
+			for (const auto& file : pv->chosen_version->get_files())
+			{
+				auto h = files.find_file(file);
+				if (h && h->data->chosen_version)
+				{
+					PRINT_DEBUG("  Ejecting because of file conflict: " <<
+						h->data->identifier_to_string() << "." << endl);
+
+					eject_node(*(h->data), true);
+				}
+
+				files.insert_file(file);
+				files.find_file(file)->data = pv;
+			}
 		}
 
-		/* Eject packages which conflict by their files and insert the package's
-		 * files into the current configuration (which must be valid but may be
-		 * incomplete (that is may have unfulfilled dependencies but must not
-		 * have conflicts)). */
-		for (const auto& file : pv->chosen_version->get_files())
-		{
-			auto h = files.find_file(file);
-			if (h && h->data->chosen_version)
-			{
-				PRINT_DEBUG("  Ejecting because of file conflict: " <<
-					h->data->identifier_to_string() << "." << endl);
+		/* Trigger garbage collection */
+		remove_unreachable_nodes();
+	}
 
-				eject_node(*(h->data), true);
+	/* Trigger garbage collection in case the last loop run did not. */
+	remove_unreachable_nodes();
+
+
+	/* Remove nodes that were marked for removal */
+	bool erase_error = false;
+	for (auto i = G.begin(); i != G.end();)
+	{
+		auto v = dynamic_pointer_cast<Depres2IGNode>(i->second);
+		i++;
+
+		if (v->marked_for_removal)
+		{
+			/* Check that the node has no chosen version and no incoming edges
+			 * (=is unreachable) */
+			if (v->chosen_version)
+			{
+				errors.push_back("Node " + v->identifier_to_string() +
+						" is marked for removal but has a chosen version.");
+				return false;
 			}
 
-			files.insert_file(file);
-			files.find_file(file)->data = pv;
+			if (v->reverse_dependencies.size() || v->reverse_pre_dependencies.size())
+			{
+				errors.push_back("Node " + v->identifier_to_string() +
+						" is marked for removal but has incoming edges.");
+				return false;
+			}
+
+			/* If the node was selected, pring an error message and fail the
+			 * computation. */
+			if (v->is_selected)
+			{
+				errors.push_back("Package " + v->identifier_to_string() +
+						" is selected by the user but cannot be installed "
+						"because it conflicts with another package (or its "
+						"dependencies conflict).");
+
+				erase_error = true;
+			}
+
+			G.erase(v->identifier);
 		}
 	}
 
-
-	remove_unreachable_nodes();
-
+	if (erase_error)
+		return false;
 
 	PRINT_DEBUG(installation_graph_to_dot(G) << endl);
 	return true;

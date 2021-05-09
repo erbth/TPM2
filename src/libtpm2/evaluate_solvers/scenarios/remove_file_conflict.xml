@@ -4,7 +4,25 @@
 			<name>a</name>
 			<arch>amd64</arch>
 			<source_version>1.0</source_version>
+			<binary_version>0.9</binary_version>
+			<files>
+				<f>/usr/bin/aa</f>
+			</files>
+		</pkg>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
 			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/a</f>
+			</files>
+		</pkg>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.1</binary_version>
 			<files>
 				<f>/usr/bin/a</f>
 			</files>

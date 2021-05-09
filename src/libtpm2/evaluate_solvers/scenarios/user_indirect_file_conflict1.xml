@@ -1,0 +1,58 @@
+<scenario name="user_indirect_file_conflict1">
+	<universe>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/x</f>
+			</files>
+		</pkg>
+
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/b</f>
+			</files>
+			<deps>
+				<pkg>
+					<name>c</name>
+					<arch>amd64</arch>
+				</pkg>
+			</deps>
+		</pkg>
+
+		<pkg>
+			<name>c</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/x</f>
+			</files>
+		</pkg>
+	</universe>
+
+	<installed>
+	</installed>
+
+	<selected>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+		</pkg>
+		<pkg>
+			<name>b</name>
+			<arch>amd64</arch>
+		</pkg>
+	</selected>
+
+	<desired>
+		<error>a@amd64:1.0 loop_cnt:</error>
+		<error>c@amd64:1.0 loop_cnt:</error>
+	</desired>
+</scenario>

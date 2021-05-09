@@ -1,21 +1,17 @@
-<scenario name="remove_dependency_conflict">
+<scenario name="user_indirect_file_conflict2">
 	<universe>
 		<pkg>
 			<name>a</name>
 			<arch>amd64</arch>
 			<source_version>1.0</source_version>
 			<binary_version>1.0</binary_version>
-		</pkg>
-		<pkg>
-			<name>a</name>
-			<arch>amd64</arch>
-			<source_version>1.0</source_version>
-			<binary_version>1.1</binary_version>
+			<files>
+				<f>/usr/bin/a</f>
+			</files>
 			<deps>
 				<pkg>
-					<name>b</name>
+					<name>c</name>
 					<arch>amd64</arch>
-					<constr type="eq">1.0</constr>
 				</pkg>
 			</deps>
 		</pkg>
@@ -25,6 +21,15 @@
 			<arch>amd64</arch>
 			<source_version>1.0</source_version>
 			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/b</f>
+			</files>
+			<deps>
+				<pkg>
+					<name>d</name>
+					<arch>amd64</arch>
+				</pkg>
+			</deps>
 		</pkg>
 
 		<pkg>
@@ -32,13 +37,19 @@
 			<arch>amd64</arch>
 			<source_version>1.0</source_version>
 			<binary_version>1.0</binary_version>
-			<deps>
-				<pkg>
-					<name>a</name>
-					<arch>amd64</arch>
-					<constr type="eq">1.0</constr>
-				</pkg>
-			</deps>
+			<files>
+				<f>/usr/bin/x</f>
+			</files>
+		</pkg>
+
+		<pkg>
+			<name>d</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+			<files>
+				<f>/usr/bin/x</f>
+			</files>
 		</pkg>
 	</universe>
 
@@ -51,21 +62,13 @@
 			<arch>amd64</arch>
 		</pkg>
 		<pkg>
-			<name>c</name>
+			<name>b</name>
 			<arch>amd64</arch>
 		</pkg>
 	</selected>
 
 	<desired>
-		<pkg>
-			<name>a</name>
-			<arch>amd64</arch>
-			<version>1.0</version>
-		</pkg>
-		<pkg>
-			<name>c</name>
-			<arch>amd64</arch>
-			<version>1.0</version>
-		</pkg>
+		<error>c@amd64:1.0 loop_cnt:</error>
+		<error>d@amd64:1.0 loop_cnt:</error>
 	</desired>
 </scenario>

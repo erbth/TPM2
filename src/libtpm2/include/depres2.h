@@ -2,10 +2,6 @@
  *
  * Depres version 2
  *
- * TODO:
- *   * removing packages (? - would enable to move files between packages
- *     without having to provide empty versions of the packages which previously
- *     owned the files)
  * */
 #ifndef __DEPRES2_H
 #define __DEPRES2_H
@@ -34,6 +30,11 @@ namespace depres
 		friend Depres2Solver;
 
 	protected:
+		/* Set to true if this node should be removed from the graph (only
+		 * required for nodes that cannot be removed immediately / by garbage
+		 * collection) */
+		bool marked_for_removal = false;
+
 		/* Clear private data to save memory. To be called when the solver is
 		 * finished / when returning G. */
 		void clear_private_data();
@@ -48,7 +49,7 @@ namespace depres
 				const bool installed_automatically);
 	};
 
-	/* Policy for desiding between otherwise equally suited versions of a
+	/* Policy for deciding between otherwise equally suited versions of a
 	 * package. Any package somehow involved in the calculation is evaluated
 	 * with this policy.
 	 *
@@ -106,6 +107,9 @@ namespace depres
 		/* Remove unreachable nodes - a garbage collection for nodes */
 		bool is_node_unreachable(IGNode& v);
 		void remove_unreachable_nodes();
+
+		/* Formating error messages */
+		void format_loop_error_message();
 
 	public:
 		virtual ~Depres2Solver() {}
