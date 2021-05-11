@@ -20,7 +20,7 @@ ProvidedPackage::ProvidedPackage (
 		const tf::TableOfContents& toc,
 		shared_ptr<tf::ReadStream> rs)
 	:
-		PackageVersion(mdata.name, mdata.architecture, mdata.source_version, mdata.version),
+		PackageVersion(mdata->name, mdata->architecture, mdata->source_version, mdata->version),
 		mdata(mdata),
 		toc(toc),
 		rs(rs)
@@ -48,9 +48,9 @@ bool ProvidedPackage::is_installed() const
 vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>>
 ProvidedPackage::get_dependencies()
 {
-	vector<pair<string, int>, shared_ptr<const PackageConstraints::Formula>> deps;
+	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>> deps;
 	for (auto& dep : mdata->dependencies)
-		deps.append(make_pair(dep.identifier, dep.version_formula));
+		deps.push_back(make_pair(dep.identifier, dep.version_formula));
 
 	return deps;
 }
@@ -58,21 +58,21 @@ ProvidedPackage::get_dependencies()
 vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>>
 ProvidedPackage::get_pre_dependencies()
 {
-	vector<pair<string, int>, shared_ptr<const PackageConstraints::Formula>> deps;
+	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>> deps;
 	for (auto& dep : mdata->pre_dependencies)
-		deps.append(make_pair(dep.identifier, dep.version_formula));
+		deps.push_back(make_pair(dep.identifier, dep.version_formula));
 
 	return deps;
 }
 
-const vector<string> &get_files()
+const vector<string> &ProvidedPackage::get_files()
 {
 	if (!file_paths_populated)
 	{
-		for (auto& file : get_file_list())
+		for (auto& file : *get_file_list())
 		{
 			if (file.type != FILE_TYPE_DIRECTORY)
-				file_paths.append(file.path);
+				file_paths.push_back(file.path);
 		}
 
 		file_paths_populated = true;
@@ -81,14 +81,14 @@ const vector<string> &get_files()
 	return file_paths;
 }
 
-const vector<string> &get_directories()
+const vector<string> &ProvidedPackage::get_directories()
 {
 	if (!directory_paths_populated)
 	{
-		for (auto& file : get_file_list())
+		for (auto& file : *get_file_list())
 		{
 			if (file.type == FILE_TYPE_DIRECTORY)
-				directory_paths.append(file.path);
+				directory_paths.push_back(file.path);
 		}
 
 		directory_paths_populated = true;
@@ -98,7 +98,7 @@ const vector<string> &get_directories()
 }
 
 
-shared_ptr<PackageMetaData> ProvidedPackage::get_mdata() const
+shared_ptr<PackageMetaData> ProvidedPackage::get_mdata()
 {
 	return mdata;
 }

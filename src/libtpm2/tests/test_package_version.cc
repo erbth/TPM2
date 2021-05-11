@@ -23,16 +23,16 @@ public:
 		return false;
 	}
 
-	vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> get_dependencies() override
+	vector<pair<pair<string, int>, shared_ptr<const pc::Formula>>> get_dependencies() override
 	{
-		vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> v;
+		vector<pair<pair<string, int>, shared_ptr<const pc::Formula>>> v;
 		v.push_back(make_pair(make_pair("test", 1), nullptr));
 		return v;
 	}
 
-	vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> get_pre_dependencies() override
+	vector<pair<pair<string, int>, shared_ptr<const pc::Formula>>> get_pre_dependencies() override
 	{
-		vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> v;
+		vector<pair<pair<string, int>, shared_ptr<const pc::Formula>>> v;
 		v.push_back(make_pair(make_pair("test2", 1), nullptr));
 		return v;
 	}

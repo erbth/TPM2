@@ -9,6 +9,7 @@ add_executable(tpm2
 	directory_repository.cc
 	stored_maintainer_scripts.cc
 	pkg_tools.cc
+	installation_package_version.cc
 	../common/dependencies.cc
 	../common/package_meta_data.cc
 	../common/transport_form.cc

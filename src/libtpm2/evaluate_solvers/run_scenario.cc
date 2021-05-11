@@ -30,9 +30,9 @@ PackageVersionAdaptor::PackageVersionAdaptor(std::shared_ptr<Scenario::Package> 
 {
 }
 
-vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> PackageVersionAdaptor::get_dependencies()
+vector<pair<pair<string, int>, shared_ptr<const pc::Formula>>> PackageVersionAdaptor::get_dependencies()
 {
-	vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> deps;
+	vector<pair<pair<string, int>, shared_ptr<const pc::Formula>>> deps;
 
 	for (auto& scenario_dep : scenario_package->deps)
 	{
@@ -43,9 +43,9 @@ vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> PackageVersionAdaptor::
 	return deps;
 }
 
-vector<pair<pair<string, int>, shared_ptr<pc::Formula>>> PackageVersionAdaptor::get_pre_dependencies()
+vector<pair<pair<string, int>, shared_ptr<const pc::Formula>>> PackageVersionAdaptor::get_pre_dependencies()
 {
-	return vector<pair<pair<string, int>, shared_ptr<pc::Formula>>>();
+	return vector<pair<pair<string, int>, shared_ptr<const pc::Formula>>>();
 }
 
 const vector<string> &PackageVersionAdaptor::get_files()

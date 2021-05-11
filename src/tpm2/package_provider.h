@@ -18,9 +18,10 @@
 #include "managed_buffer.h"
 #include "file_list.h"
 #include "package_version.h"
+#include "installation_package_version.h"
 
 
-class ProvidedPackage : public PackageVersion
+class ProvidedPackage : public PackageVersion, public InstallationPackageVersion
 {
 private:
 	std::shared_ptr<PackageMetaData> mdata;
@@ -62,9 +63,10 @@ public:
 	const std::vector<std::string> &get_files() override;
 	const std::vector<std::string> &get_directories() override;
 
-	/* Original methods */
-	std::shared_ptr<PackageMetaData> get_mdata() const;
+	/* InstalledPackageVersion interface */
+	std::shared_ptr<PackageMetaData> get_mdata() override;
 
+	/* Original methods */
 	/* This will always return a valid pointer. If the package has no files, the
 	 * list is simply empty. */
 	std::shared_ptr<FileList> get_file_list();

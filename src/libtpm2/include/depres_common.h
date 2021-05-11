@@ -40,7 +40,7 @@ namespace depres
 		std::shared_ptr<IGNode>>;
 
 	using selected_package_t = std::pair<
-		std::pair<const std::string, int>,
+		std::pair<std::string, int>,
 		std::shared_ptr<const PackageConstraints::Formula>>;
 
 	using cb_list_package_versions_t = std::function<
@@ -68,7 +68,7 @@ namespace depres
 		 * imposed by the user. */
 		std::map<
 				IGNode*,
-				std::shared_ptr<PackageConstraints::Formula>
+				std::shared_ptr<const PackageConstraints::Formula>
 			> constraints;
 
 		/* Dependencies and pre-dependencies (a shortcut on the graph and not on

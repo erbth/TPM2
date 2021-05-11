@@ -18,6 +18,7 @@
 #include "package_db.h"
 #include "package_meta_data.h"
 #include "package_provider.h"
+#include "installation_package_version.h"
 #include "stored_maintainer_scripts.h"
 
 
@@ -28,19 +29,20 @@ namespace depres
 
 
 	/* InstalledPackageVersion to provide installed packages to the solver */
-	/* TODO: Common base with ProvidedPackageVersion for get_mdata and a public
-	 * attribute 'provided_package' for 'Fetch missing archives...' in
-	 * installation.cc. */
-	class InstalledPackageVersion : public PackageVersion
+	class InstalledPackageVersion :
+		public PackageVersion, public InstallationPackageVersion
 	{
 	protected:
 		std::shared_ptr<PackageMetaData> mdata;
 		PackageDB& pkgdb;
 
-		vector<string> file_paths;
-		vector<string> directory_paths;
+		std::vector<std::string> file_paths;
+		std::vector<std::string> directory_paths;
 
 	public:
+		/* For the installation code to give the provided package a home. */
+		std::shared_ptr<ProvidedPackage> provided_package;
+
 		InstalledPackageVersion(std::shared_ptr<PackageMetaData> mdata, PackageDB& pkgdb);
 
 		/* PackageVersion interface */
@@ -57,9 +59,10 @@ namespace depres
 		const std::vector<std::string> &get_files() override;
 		const std::vector<std::string> &get_directories() override;
 
-		/* Original methods */
-		std::shared_ptr<PackageMetaData> get_mdata() const;
+		/* InstallationPackageVersion interface */
+		std::shared_ptr<PackageMetaData> get_mdata() override;
 
+		/* Original methods */
 		/* Shortcut for get_mdata()->installation_reason ==
 		 * INSTALLATION_REASON_AUTO */
 		bool installed_automatically() const;
@@ -165,7 +168,7 @@ namespace depres
 			: operation(operation), pkg(pkg), ig_node(nullptr)
 		{ }
 
-		pkg_operation (char operation, installation_graph_t* ig_node)
+		pkg_operation (char operation, IGNode* ig_node)
 			: operation(operation), pkg(nullptr), ig_node(ig_node)
 		{ }
 	};

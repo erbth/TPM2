@@ -44,11 +44,11 @@ public:
 	}
 
 	std::vector<
-			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+			std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
 		> get_dependencies() override
 	{
 		std::vector<
-				std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+				std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
 			> deps;
 
 		deps.push_back(make_pair(make_pair(name, 0), make_shared<pc::And>(nullptr, nullptr)));
@@ -56,11 +56,11 @@ public:
 	}
 
 	std::vector<
-			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+			std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
 		> get_pre_dependencies() override
 	{
 		std::vector<
-				std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+				std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
 			> deps;
 
 		deps.push_back(make_pair(make_pair(name, 0), make_shared<pc::And>(nullptr, nullptr)));

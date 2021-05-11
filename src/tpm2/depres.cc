@@ -13,7 +13,9 @@ using namespace std;
 namespace depres
 {
 /* InstalledPackageVersion to provide installed packages to the solver */
-InstalledPackageVersion::InstalledPackageVersion(shared_ptr<PackageMetaData> mdata)
+InstalledPackageVersion::InstalledPackageVersion(
+		shared_ptr<PackageMetaData> mdata,
+		PackageDB& pkgdb)
 	:
 		PackageVersion(mdata->name, mdata->architecture, mdata->source_version, mdata->version),
 		mdata(mdata),
@@ -33,44 +35,44 @@ bool InstalledPackageVersion::is_installed() const
 	return true;
 }
 
-vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>
+vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>>
 InstalledPackageVersion::get_dependencies()
 {
-	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>> deps;
+	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>> deps;
 	for (auto& dep : mdata->dependencies)
-		deps.append(make_pair(dep.identifier, dep.version_formula));
+		deps.push_back(make_pair(dep.identifier, dep.version_formula));
 
 	return deps;
 }
 
-vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>
+vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>>
 InstalledPackageVersion::get_pre_dependencies()
 {
-	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>> deps;
+	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>> deps;
 	for (auto& dep : mdata->pre_dependencies)
-		deps.append(make_pair(dep.identifier, dep.version_formula));
+		deps.push_back(make_pair(dep.identifier, dep.version_formula));
 
 	return deps;
 }
 
-const std::vector<std::string> &get_files()
+const std::vector<std::string> &InstalledPackageVersion::get_files()
 {
 	return file_paths;
 }
 
-const std::vector<std::string> &get_directories()
+const std::vector<std::string> &InstalledPackageVersion::get_directories()
 {
 	return directory_paths;
 }
 
-shared_ptr<PackageMetaData> InstalledPackageVersion::get_mdata() const
+shared_ptr<PackageMetaData> InstalledPackageVersion::get_mdata()
 {
 	return mdata;
 }
 
 bool InstalledPackageVersion::installed_automatically() const
 {
-	return mdata->installation_reasion == INSTALLATION_REASON_AUTO;
+	return mdata->installation_reason == INSTALLATION_REASON_AUTO;
 }
 
 
@@ -79,7 +81,8 @@ ComputeInstallationGraphResult compute_installation_graph(
 		vector<shared_ptr<PackageMetaData>> installed_packages,
 		PackageDB& pkgdb,
 		shared_ptr<PackageProvider> pprov,
-		const vector<selected_package_t> &selected_packages)
+		const vector<selected_package_t> &selected_packages,
+		bool prefer_upgrade)
 {
 	/* Build a map of InstalledPackageVersions from installed_packages */
 	map<pair<string, int>, shared_ptr<InstalledPackageVersion>> installed_map;
@@ -91,23 +94,25 @@ ComputeInstallationGraphResult compute_installation_graph(
 	}
 
 	/* Callbacks to interface with the solver */
-	auto list_package_versions = [=pprov](const string& name, int arch) {
+	auto list_package_versions = [pprov, &installed_map](const string& name, int arch) {
 		auto s = pprov->list_package_versions(name, arch);
 
 		/* Add installed version number */
 		auto installed = installed_map.find({name, arch});
 		if (installed != installed_map.end())
-			s.insert(installed->get_binary_version());
+			s.insert(installed->second->get_binary_version());
 
-		return move(vector<VersionNumber>(move_iterator(s.begin()), move_iterator(s.end()));
+		return move(vector<VersionNumber>(move_iterator(s.begin()), move_iterator(s.end())));
 	};
 
-	auto get_package_version = [](const string &name, int architecture, const VersionNumber &version) {
+	auto get_package_version = [pprov, &installed_map]
+			(const string &name, int architecture, const VersionNumber &version) {
 		auto installed = installed_map.find({name, architecture});
-		if (installed != installed_map.end() && installed->get_binary_version == version)
-			return *installed;
+		if (installed != installed_map.end() && installed->second->get_binary_version() == version)
+			return static_pointer_cast<PackageVersion>(installed->second);
 		else
-			return pprov->get_package(name, architecture, version);
+			return static_pointer_cast<PackageVersion>(
+					pprov->get_package(name, architecture, version));
 	};
 
 	/* Create solver */
@@ -116,7 +121,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 	/* Set solver parameters */
 	vector<pair<shared_ptr<PackageVersion>, bool>> adapted_installed_packages;
 	for (auto& [id, pkg] : installed_map)
-		adapted_installed_packages.push_back(make_pair(pkg, pkg.installed_automatically));
+		adapted_installed_packages.push_back(make_pair(pkg, pkg->installed_automatically()));
 
 	solver->set_parameters(
 			adapted_installed_packages,
@@ -125,7 +130,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 			get_package_version);
 
 	/* Depres 2 specific policy */
-	solver->set_policy(Policy::keep_newer);
+	solver->set_policy(prefer_upgrade ? Policy::upgrade : Policy::keep_newer);
 
 	/* Try to solve the update problem and returnt he result. */
 	if (solver->solve())
@@ -282,12 +287,12 @@ compute_operations_result compute_operations (
 
 	for (auto ig_node : ig_nodes)
 	{
+		auto instv = dynamic_pointer_cast<InstalledPackageVersion>(ig_node->chosen_version);
 		if (ig_node->installed_version &&
 				ig_node->installed_version->get_binary_version() == ig_node->chosen_version->get_binary_version() &&
-				ig_node->chosen_version->state == PKG_STATE_CONFIGURED &&
-				ig_node->manual == (
-					dynamic_pointer_cast<InstalledPackageVersion>(ig_node->chosen_version)
-						->installation_reason == INSTALLATION_REASON_MANUAL))
+				instv->get_mdata()->state == PKG_STATE_CONFIGURED &&
+				ig_node->installed_automatically ==
+					(instv->get_mdata()->installation_reason == INSTALLATION_REASON_AUTO))
 		{
 			continue;
 		}
@@ -302,15 +307,13 @@ compute_operations_result compute_operations (
 	/* Add packages from installation graph G */
 	for (auto& [id, pnode] : igraph)
 	{
-		for (const auto& file : pnode->get_files())
+		for (const auto& file : pnode->chosen_version->get_files())
 		{
-			auto chosen_version = pnode->chosen_version;
-			auto mdata = chosen_version->is_installed() ?
-				dynamic_pointer_cast<InstalledPackageVersion>(chosen_version)->get_mdata() :
-				dynamic_pointer_cast<ProvidedPackageVersion>(chosen_version)->get_mdata();
+			auto mdata = dynamic_pointer_cast<InstallationPackageVersion>(
+					pnode->chosen_version)->get_mdata();
 
 			file_trie.insert_file(file);
-			file_trie.find_file(file)->data.append(mdata);
+			file_trie.find_file(file)->data.push_back(mdata.get());
 		}
 	}
 
@@ -425,8 +428,8 @@ compute_operations_result compute_operations (
 			b.operation = pkg_operation::INSTALL_NEW;
 		}
 		else if (b.involved_packages.size() == 1 &&
-				b.involved_packages[0]->get_name() == b.ig_node->chosen_version->get_name() &&
-				b.involved_packages[0]->get_architecture() == b.ig_node->chosen_version->get_architecture())
+				b.involved_packages[0]->name == b.ig_node->chosen_version->get_name() &&
+				b.involved_packages[0]->architecture == b.ig_node->chosen_version->get_architecture())
 		{
 			b.operation = pkg_operation::CHANGE_INSTALL;
 		}

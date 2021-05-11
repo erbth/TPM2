@@ -21,11 +21,11 @@ public:
 	PackageVersionAdaptor(std::shared_ptr<Scenario::Package> scenario_package);
 
 	std::vector<
-			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+			std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
 		> get_dependencies() override;
 
 	std::vector<
-			std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>
+			std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>
 		> get_pre_dependencies() override;
 
 	const std::vector<std::string> &get_files() override;
@@ -72,7 +72,7 @@ protected:
 	 * meet the SolveInterface. */
 	std::vector<std::shared_ptr<PackageVersion>> adapted_universe;
 	std::vector<std::pair<std::shared_ptr<PackageVersion>,bool>> adapted_installed_packages;
-	std::vector<std::pair<std::pair<std::string, int>, std::shared_ptr<PackageConstraints::Formula>>>
+	std::vector<std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>>
 		adapted_selected_packages;
 
 	std::vector<std::shared_ptr<PackageVersion>> result;

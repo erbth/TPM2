@@ -31,7 +31,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 		pkgdb.get_packages_in_state (ALL_PKG_STATES);
 
 	/* Build the installation graph */
-	vector<pair<pair<const string, int>, shared_ptr<const PackageConstraints::Formula>>> new_packages;
+	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>> new_packages;
 
 	for (const auto& pkg : params->operation_packages)
 	{
@@ -56,7 +56,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 		depres::compute_installation_graph(params, installed_packages, pkgdb,
 				PackageProvider::create (params), new_packages, false);
 
-	if (r.status != depres::ComputeInstallationGraphResult::SUCCESS)
+	if (r.error)
 	{
 		fprintf (stderr, "Error: Failed to build the installation graph: %s\n",
 				r.error_message.c_str());
@@ -71,54 +71,56 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 	/* Assign each node an index */
 	int i = 0;
 
-	for (auto& p : r.g.V)
+	for (auto& p : r.G)
 	{
 		p.second->algo_priv = i++;
 	}
 
 
-	for (auto& p : r.g.V)
+	for (auto& p : r.G)
 	{
-		shared_ptr<depres::InstallationGraphNode> node = p.second;
+		shared_ptr<depres::IGNode> node = p.second;
 		auto cv = node->chosen_version;
-		auto& iv = node->currently_installed_version;
+		auto instv = dynamic_pointer_cast<InstallationPackageVersion>(cv);
+		auto mdata = instv->get_mdata();
+		auto& iv = node->installed_version;
 
 		if (!cv)
 		{
 			fprintf (stderr, "No version chosen for packages %s@%s.\n",
-					node->name.c_str(),
-					Architecture::to_string(node->architecture).c_str());
+					mdata->name.c_str(),
+					Architecture::to_string(mdata->architecture).c_str());
 
 			return false;
 		}
 
-		string irs = installation_reason_to_string (cv->installation_reason);
+		string irs = node->installed_automatically ? "auto" : "manual";
 
 		printf ("    %d [label=\"", (int) node->algo_priv);
 
 		if (!iv)
 		{
 			printf ("Missing_pkg (%s, %s, %s, %s)",
-					node->name.c_str(),
-					Architecture::to_string(node->architecture).c_str(),
+					mdata->name.c_str(),
+					Architecture::to_string(mdata->architecture).c_str(),
 					irs.c_str(),
-					cv->version.to_string().c_str());
+					cv->get_binary_version().to_string().c_str());
 		}
-		else if (*iv == cv->version)
+		else if (*iv == *cv)
 		{
 			printf ("Present_pkg (%s, %s, %s, %s)",
-					node->name.c_str(),
-					Architecture::to_string(node->architecture).c_str(),
+					mdata->name.c_str(),
+					Architecture::to_string(mdata->architecture).c_str(),
 					irs.c_str(),
-					cv->version.to_string().c_str());
+					cv->get_binary_version().to_string().c_str());
 		}
 		else
 		{
 			printf ("Wrong_pkg (%s, %s, %s, %s)",
-					node->name.c_str(),
-					Architecture::to_string(node->architecture).c_str(),
+					mdata->name.c_str(),
+					Architecture::to_string(mdata->architecture).c_str(),
 					irs.c_str(),
-					cv->version.to_string().c_str());
+					cv->get_binary_version().to_string().c_str());
 		}
 
 		printf ("\"];\n");
@@ -156,11 +158,11 @@ bool install_packages(shared_ptr<Parameters> params)
 	if (!system_state_accepted_for_install (installed_packages))
 		return false;
 
-	/* Find packages the requested packages in a repo and resolve their
-	 * dependencies recursively. I have the depres module for this task. */
+	/* Find the requested packages in a repo and resolve their dependencies
+	 * recursively. I have the depres module for this task. */
 	shared_ptr<PackageProvider> pprov = PackageProvider::create (params);
 
-	vector<pair<pair<const string, int>, shared_ptr<const PackageConstraints::Formula>>> new_packages;
+	vector<pair<pair<string, int>, shared_ptr<const PackageConstraints::Formula>>> new_packages;
 
 	for (const auto& pkg : params->operation_packages)
 	{
@@ -180,7 +182,7 @@ bool install_packages(shared_ptr<Parameters> params)
 		depres::compute_installation_graph (
 				params, installed_packages, pkgdb, pprov, new_packages, true);
 
-	if (comp_igraph_res.status != depres::ComputeInstallationGraphResult::SUCCESS)
+	if (comp_igraph_res.error)
 	{
 		fprintf (stderr, "Failed to build the installation graph: %s\n",
 				comp_igraph_res.error_message.c_str());
@@ -188,7 +190,7 @@ bool install_packages(shared_ptr<Parameters> params)
 		return false;
 	}
 
-	depres::installation_graph_t& igraph = comp_igraph_res.g;
+	depres::installation_graph_t& igraph = comp_igraph_res.G;
 
 
 	/* Determine an unpack and a configuration order */
@@ -215,8 +217,8 @@ bool install_packages(shared_ptr<Parameters> params)
 		switch (op.operation)
 		{
 			case depres::pkg_operation::INSTALL_NEW:
-				name = op.ig_node->chosen_version->name;
-				version = op.ig_node->chosen_version->version.to_string();
+				name = op.ig_node->chosen_version->get_name();
+				version = op.ig_node->chosen_version->get_binary_version().to_string();
 				op_name = "install_new";
 				break;
 
@@ -233,8 +235,8 @@ bool install_packages(shared_ptr<Parameters> params)
 				break;
 
 			case depres::pkg_operation::CHANGE_INSTALL:
-				name = op.ig_node->chosen_version->name;
-				version = op.ig_node->chosen_version->version.to_string();
+				name = op.ig_node->chosen_version->get_name();
+				version = op.ig_node->chosen_version->get_binary_version().to_string();
 				op_name = "change_install";
 				break;
 
@@ -245,8 +247,8 @@ bool install_packages(shared_ptr<Parameters> params)
 				break;
 
 			case depres::pkg_operation::REPLACE_INSTALL:
-				name = op.ig_node->chosen_version->name;
-				version = op.ig_node->chosen_version->version.to_string();
+				name = op.ig_node->chosen_version->get_name();
+				version = op.ig_node->chosen_version->get_binary_version().to_string();
 				op_name = "replace_install";
 				break;
 
@@ -265,8 +267,8 @@ bool install_packages(shared_ptr<Parameters> params)
 		switch (op.operation)
 		{
 			case depres::pkg_operation::INSTALL_NEW:
-				name = op.ig_node->chosen_version->name;
-				version = op.ig_node->chosen_version->version.to_string();
+				name = op.ig_node->chosen_version->get_name();
+				version = op.ig_node->chosen_version->get_binary_version().to_string();
 				op_name = "install_new";
 				break;
 
@@ -283,8 +285,8 @@ bool install_packages(shared_ptr<Parameters> params)
 				break;
 
 			case depres::pkg_operation::CHANGE_INSTALL:
-				name = op.ig_node->chosen_version->name;
-				version = op.ig_node->chosen_version->version.to_string();
+				name = op.ig_node->chosen_version->get_name();
+				version = op.ig_node->chosen_version->get_binary_version().to_string();
 				op_name = "change_install";
 				break;
 
@@ -295,8 +297,8 @@ bool install_packages(shared_ptr<Parameters> params)
 				break;
 
 			case depres::pkg_operation::REPLACE_INSTALL:
-				name = op.ig_node->chosen_version->name;
-				version = op.ig_node->chosen_version->version.to_string();
+				name = op.ig_node->chosen_version->get_name();
+				version = op.ig_node->chosen_version->get_binary_version().to_string();
 				op_name = "replace_install";
 				break;
 
@@ -313,8 +315,15 @@ bool install_packages(shared_ptr<Parameters> params)
 	/* Set package states of new packages to wanted. They are invalid now. */
 	for (auto& op : unpack_order)
 	{
-		if (op.ig_node && op.ig_node->chosen_version->state == PKG_STATE_INVALID)
-			op.ig_node->chosen_version->state = PKG_STATE_WANTED;
+		if (op.ig_node)
+		{
+			auto mdata = dynamic_pointer_cast<InstallationPackageVersion>(
+					op.ig_node->chosen_version)
+				->get_mdata();
+
+			if (mdata->state == PKG_STATE_INVALID)
+				mdata->state = PKG_STATE_WANTED;
+		}
 	}
 
 
@@ -353,8 +362,8 @@ bool install_packages(shared_ptr<Parameters> params)
 				case depres::pkg_operation::INSTALL_NEW:
 				case depres::pkg_operation::REPLACE_INSTALL:
 					to_install.push_back (make_pair (
-								op.ig_node->chosen_version->name,
-								op.ig_node->chosen_version->architecture));
+								op.ig_node->chosen_version->get_name(),
+								op.ig_node->chosen_version->get_architecture()));
 					break;
 
 				case depres::pkg_operation::REMOVE:
@@ -372,8 +381,8 @@ bool install_packages(shared_ptr<Parameters> params)
 
 				case depres::pkg_operation::CHANGE_INSTALL:
 					to_change.insert (make_pair (
-								op.ig_node->chosen_version->name,
-								op.ig_node->chosen_version->architecture));
+								op.ig_node->chosen_version->get_name(),
+								op.ig_node->chosen_version->get_architecture()));
 					break;
 
 				default:
@@ -459,7 +468,10 @@ bool install_packages(shared_ptr<Parameters> params)
 				op.operation == depres::pkg_operation::REPLACE_INSTALL)
 		{
 			depres::IGNode* ig_node = op.ig_node;
-			shared_ptr<PackageMetaData> mdata = ig_node->chosen_version;
+			auto installation_package_version = dynamic_pointer_cast<InstallationPackageVersion>(
+					ig_node->chosen_version);
+
+			auto mdata = installation_package_version->get_mdata();
 
 			/* Check for states that need archives */
 			if (
@@ -469,15 +481,20 @@ bool install_packages(shared_ptr<Parameters> params)
 					mdata->state == PKG_STATE_UNPACK_BEGIN ||
 					mdata->state == PKG_STATE_UNPACK_CHANGE)
 			{
-				if (!ig_node->provided_package)
+				if (!dynamic_pointer_cast<ProvidedPackage>(installation_package_version))
 				{
-					ig_node->provided_package = pprov->get_package (
+					auto installed_package_version =
+						dynamic_pointer_cast<depres::InstalledPackageVersion>(installation_package_version);
+
+					installed_package_version->provided_package = pprov->get_package (
 							mdata->name, mdata->architecture, mdata->version);
 
-					if (!ig_node->provided_package)
+					if (!installed_package_version->provided_package)
 					{
 						fprintf (stderr,
-								"Could not fetch package %s@%s:%s (required after depres).\n",
+								"Could not fetch package %s@%s:%s\n"
+								"    (currently installed but its change requires "
+								"the package archive to be present).\n",
 								mdata->name.c_str(),
 								Architecture::to_string (mdata->architecture).c_str(),
 								mdata->version.to_string().c_str());
@@ -569,15 +586,24 @@ bool install_packages(shared_ptr<Parameters> params)
 			continue;
 		}
 
-		depres::InstallationGraphNode* ig_node = op.ig_node;
-		shared_ptr<PackageMetaData> mdata = ig_node->chosen_version;
-		shared_ptr<ProvidedPackage> pp = ig_node->provided_package;
+		depres::IGNode* ig_node = op.ig_node;
+		auto installation_package_version = dynamic_pointer_cast<InstallationPackageVersion>(
+				ig_node->chosen_version);
+
+		shared_ptr<PackageMetaData> mdata = installation_package_version->get_mdata();
+		shared_ptr<ProvidedPackage> pp = dynamic_pointer_cast<ProvidedPackage>(ig_node->chosen_version);
+		if (!pp)
+		{
+			/* Must be an InstalledPackageVersion */
+			pp = dynamic_pointer_cast<depres::InstalledPackageVersion>(ig_node->chosen_version)
+				->provided_package;
+		}
 
 		bool change = op.operation != depres::pkg_operation::INSTALL_NEW;
 
 		/* Potentially change installation reason */
-		if (ig_node->manual && ig_node->chosen_version->installation_reason
-				!= INSTALLATION_REASON_MANUAL)
+		if (ig_node->installed_automatically &&
+				mdata->installation_reason != INSTALLATION_REASON_AUTO)
 		{
 			if (!ll_change_installation_reason (
 						pkgdb,
@@ -587,8 +613,8 @@ bool install_packages(shared_ptr<Parameters> params)
 				return false;
 			}
 		}
-		else if (!ig_node->manual && ig_node->chosen_version->installation_reason
-				== INSTALLATION_REASON_MANUAL)
+		else if (!ig_node->installed_automatically &&
+				mdata->installation_reason == INSTALLATION_REASON_AUTO)
 		{
 			if (!ll_change_installation_reason (
 						pkgdb,
@@ -766,44 +792,64 @@ bool install_packages(shared_ptr<Parameters> params)
 				continue;
 			}
 
-			depres::InstallationGraphNode* ig_node = op.ig_node;
+			depres::IGNode* ig_node = op.ig_node;
+			auto installation_package_version = dynamic_pointer_cast<InstallationPackageVersion>(
+					ig_node->chosen_version);
+			auto mdata = installation_package_version->get_mdata();
 			bool change = op.operation != depres::pkg_operation::INSTALL_NEW;
 
 			if (
-					ig_node->chosen_version->state == PKG_STATE_CONFIGURE_BEGIN ||
-					ig_node->chosen_version->state == PKG_STATE_WAIT_OLD_REMOVED ||
-					ig_node->chosen_version->state == PKG_STATE_CONFIGURE_CHANGE)
+					mdata->state == PKG_STATE_CONFIGURE_BEGIN ||
+					mdata->state == PKG_STATE_WAIT_OLD_REMOVED ||
+					mdata->state == PKG_STATE_CONFIGURE_CHANGE)
 			{
+				/* Get provided package and optionally stored maintainer
+				 * scripts. */
+				auto pp = dynamic_pointer_cast<ProvidedPackage>(ig_node->chosen_version);
+
+				/* Note: Since the configuration happens after ll installation,
+				 * sms will be present if the package version is an installed
+				 * package. Hence it is more atomic to use the stored maintainer
+				 * scripts of installed package versions, because newly provided
+				 * package versions may have changed (if someone published a
+				 * different archive with the same version). In fact, the
+				 * InstalledPackageVersion will not have a ProvidedPackage in
+				 * some of those cases (only if installation has been
+				 * interrupted during preinst or unpack). */
+				shared_ptr<StoredMaintainerScripts> sms;
+				if (!pp)
+					sms = make_shared<StoredMaintainerScripts>(params, mdata);
+
 				printf ("ll configuring package %s@%s\n",
-						ig_node->chosen_version->name.c_str(),
-						Architecture::to_string (ig_node->chosen_version->architecture).c_str());
+						mdata->name.c_str(),
+						Architecture::to_string (mdata->architecture).c_str());
 
 				/* Integrity protection */
-				if (change && ig_node->chosen_version->state == PKG_STATE_CONFIGURE_BEGIN)
+				if (change && mdata->state == PKG_STATE_CONFIGURE_BEGIN)
 				{
 					fprintf (stderr, "Depres requested a change but the package is not in a change state.\n");
 					return false;
 				}
 				else if (!change && (
-							ig_node->chosen_version->state == PKG_STATE_CONFIGURE_CHANGE ||
-							ig_node->chosen_version->state == PKG_STATE_WAIT_OLD_REMOVED))
+							mdata->state == PKG_STATE_CONFIGURE_CHANGE ||
+							mdata->state == PKG_STATE_WAIT_OLD_REMOVED))
 				{
 					fprintf (stderr, "Depres did not request a change but the package is in a change state.\n");
 					return false;
 				}
 
 				if (
-						ig_node->chosen_version->state == PKG_STATE_WAIT_OLD_REMOVED ||
-						ig_node->chosen_version->state == PKG_STATE_CONFIGURE_CHANGE)
+						mdata->state == PKG_STATE_WAIT_OLD_REMOVED ||
+						mdata->state == PKG_STATE_CONFIGURE_CHANGE)
 				{
-					if (!ll_configure_package (params, pkgdb, ig_node->chosen_version,
-								ig_node->provided_package, ig_node->sms, true))
+					if (!ll_configure_package (params, pkgdb, mdata,
+								pp, sms, true))
 						return false;
 				}
-				else if (ig_node->chosen_version->state == PKG_STATE_CONFIGURE_BEGIN)
+				else if (mdata->state == PKG_STATE_CONFIGURE_BEGIN)
 				{
-					if (!ll_configure_package (params, pkgdb, ig_node->chosen_version,
-								ig_node->provided_package, ig_node->sms, false))
+					if (!ll_configure_package (params, pkgdb, mdata,
+								pp, sms, false))
 						return false;
 				}
 			}
@@ -838,7 +884,7 @@ bool ll_run_preinst (
 
 	try
 	{
-		auto files = pp->get_files();
+		auto files = pp->get_file_list();
 
 		bool first = true;
 
@@ -916,7 +962,7 @@ bool ll_run_preinst (
 
 		pkgdb.update_or_create_package (mdata);
 		pkgdb.set_dependencies (mdata);
-		pkgdb.set_files (mdata, pp->get_files());
+		pkgdb.set_files (mdata, pp->get_file_list());
 
 		StoredMaintainerScripts sms (params, mdata,
 				pp->get_preinst(),

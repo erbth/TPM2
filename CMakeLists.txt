@@ -4,7 +4,7 @@ project(TPM2 CXX)
 
 set(TPM2_VERSION_MAJOR 2)
 set(TPM2_VERSION_MINOR 0)
-set(TPM2_VERSION_PATCH 0)
+set(TPM2_VERSION_PATCH 1)
 
 # Options
 option (STATIC_TPM2 "Statically link the program TPM2" OFF)
