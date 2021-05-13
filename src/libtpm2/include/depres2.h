@@ -35,6 +35,8 @@ namespace depres
 		 * collection) */
 		bool marked_for_removal = false;
 
+		unsigned t_eject = 0;
+
 		/* Clear private data to save memory. To be called when the solver is
 		 * finished / when returning G. */
 		void clear_private_data();
@@ -80,6 +82,7 @@ namespace depres
 
 		std::set<IGNode*> active;
 		FileTrie<IGNode*> files;
+		unsigned t_now = 0;
 
 		/* Bias for package versions to choose */
 		int policy = Policy::keep_newer;

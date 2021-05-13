@@ -758,7 +758,7 @@ bool PackageDB::update_or_create_package (shared_ptr<PackageMetaData> mdata)
 			if (err != SQLITE_OK)
 				throw sqlitedb_exception (err, pDb);
 
-			err = sqlite3_bind_int (pStmt, 6, mdata->state);
+			err = sqlite3_bind_int (pStmt, 6, mdata->installation_reason);
 			if (err != SQLITE_OK)
 				throw sqlitedb_exception (err, pDb);
 

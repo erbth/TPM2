@@ -117,6 +117,6 @@
 	</selected>
 
 	<desired>
-		<error>The solver considers the scenario unsolvable because it detected a loop in its execution: a@amd64:1.1</error>
+		<error>The solver considers the scenario unsolvable because it detected a loop in its execution:</error>
 	</desired>
 </scenario>

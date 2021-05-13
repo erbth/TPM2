@@ -44,6 +44,7 @@ set (CPACK_SOURCE_VERSION_PATCH ${TPM2_VERSION_PATCH})
 set (CPACK_SOURCE_GENERATOR "TGZ")                                               
 
 set (CPACK_SOURCE_IGNORE_FILES "/build;/\.git;.*\.swp;mysession\.vim;/playground;"
+	"__pycache__/;"
 	"/Documentation/.*\.aux;/Documentation/.*\.out;/Documentation/.*\.synctex.gz;"
 	"/Documentation/.*\.toc;/Documentation/.*\.log;"
 	"${CPACK_SOURCE_IGNORE_FILES}")

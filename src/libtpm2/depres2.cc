@@ -109,6 +109,7 @@ float Depres2Solver::compute_alpha(
 	/* Test if the version can be installed without ejecting other
 	 * package versions (of dependencies or pre-dependencies). */
 	float cnt_ejects = 0.f;
+	unsigned t = 0;
 	for (auto& [id, constr] : version->get_dependencies())
 	{
 		auto iw = G.find(id);
@@ -121,6 +122,10 @@ float Depres2Solver::compute_alpha(
 					w->chosen_version->get_binary_version()))
 		{
 			cnt_ejects += 1.f;
+
+			auto t_w = dynamic_pointer_cast<Depres2IGNode>(w)->t_eject;
+			if (t_w > t)
+				t = t_w;
 		}
 	}
 
@@ -136,10 +141,18 @@ float Depres2Solver::compute_alpha(
 					w->chosen_version->get_binary_version()))
 		{
 			cnt_ejects += 1.f;
+
+			auto t_w = dynamic_pointer_cast<Depres2IGNode>(w)->t_eject;
+			if (t_w > t)
+				t = t_w;
 		}
 	}
 
-	float d = cnt_ejects > 0.f ? -1.f - (1.f - 1.f / cnt_ejects) : 0.f;
+	float mu = 1.f - 1.f / (cnt_ejects + 1);
+	/* t_now - t < 0 => overflow => eject happened a long time ago */
+	float theta = t_now >= t ? (1.f / (t_now - t + 1)) : 0.f;
+	PRINT_DEBUG("theta = " << theta << endl);
+	float d = mu > 0.f ? (-1.f - .3125f * mu - .5f * theta) : 0.f;
 
 	/* Compute f */
 	float f = 0.f;
@@ -166,7 +179,7 @@ float Depres2Solver::compute_alpha(
 
 	case Policy::keep_newer:
 	default:
-		if (pv->installed_version && pv->installed_version == version)
+		if (pv->installed_version && *(pv->installed_version) == *(version))
 			b = 0.95f;
 		else
 			b = 0.8f * ((float) version_index / versions_count);
@@ -174,7 +187,7 @@ float Depres2Solver::compute_alpha(
 	}
 
 	/* Combine components into a score of the package */
-	float alpha = 1.f * c + 2.f * d + 8.f * f + 1.f * b;
+	float alpha = 1.f * c + 2.f * d + 8.f * f + .2f * b;
 
 	PRINT_DEBUG(pv->identifier_to_string() + ":" + version->get_binary_version().to_string() <<
 		" c = " << c << ", d = " << d << ", f = " << f << ", b = " << b <<
@@ -185,6 +198,8 @@ float Depres2Solver::compute_alpha(
 
 void Depres2Solver::eject_node(IGNode& v, bool put_into_active)
 {
+	static_cast<Depres2IGNode*>(&v)->t_eject = t_now;
+
 	if (v.chosen_version)
 	{
 		for (const auto& file : v.chosen_version->get_files())
@@ -347,7 +362,9 @@ bool Depres2Solver::solve()
 
 		v->is_selected = true;
 		v->installed_automatically = false;
-		v->constraints.insert(make_pair(nullptr, sp.second));
+
+		if (sp.second)
+			v->constraints.insert(make_pair(nullptr, sp.second));
 
 		if (!v->version_is_satisfying())
 			active.insert(v.get());
@@ -357,8 +374,11 @@ bool Depres2Solver::solve()
 	/* The solver algorithm's main core. */
 	while (active.size())
 	{
-		/* Take an "arbitrary" package - for now the minimum. Note that cycle
-		 * detection relies on this operation to be deterministic currently. */
+		t_now++;
+
+		/* Take an "arbitrary" package - for now the minimum of the set (with
+		 * minimal memory address). Note that cycle detection relies on this
+		 * operation to be deterministic currently. */
 		auto iv = active.begin();
 		auto pv = dynamic_cast<Depres2IGNode*>(*iv);
 		active.erase(iv);
@@ -405,7 +425,6 @@ bool Depres2Solver::solve()
 			}
 		}
 
-		/* Require user selected versions */
 		if (!best_version)
 		{
 			errors.push_back("Could not find version for " +
@@ -413,6 +432,7 @@ bool Depres2Solver::solve()
 			return false;
 		}
 
+		/* Require user selected versions */
 		if (alpha_max < -10000.f)
 		{
 			errors.push_back("Could not find suitable version for " +
@@ -421,7 +441,7 @@ bool Depres2Solver::solve()
 		}
 
 		/* If the best version did not change, continue. */
-		if (pv->chosen_version && pv->chosen_version == best_version)
+		if (pv->chosen_version && *(pv->chosen_version) == *(best_version))
 			continue;
 
 		/* Loop detection */

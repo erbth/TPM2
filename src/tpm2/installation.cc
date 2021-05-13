@@ -54,7 +54,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 
 	depres::ComputeInstallationGraphResult r =
 		depres::compute_installation_graph(params, installed_packages, pkgdb,
-				PackageProvider::create (params), new_packages, false);
+				PackageProvider::create (params), new_packages, true);
 
 	if (r.error)
 	{
@@ -603,12 +603,12 @@ bool install_packages(shared_ptr<Parameters> params)
 
 		/* Potentially change installation reason */
 		if (ig_node->installed_automatically &&
-				mdata->installation_reason != INSTALLATION_REASON_AUTO)
+				mdata->installation_reason == INSTALLATION_REASON_MANUAL)
 		{
 			if (!ll_change_installation_reason (
 						pkgdb,
 						mdata,
-						INSTALLATION_REASON_MANUAL))
+						INSTALLATION_REASON_AUTO))
 			{
 				return false;
 			}
@@ -619,7 +619,7 @@ bool install_packages(shared_ptr<Parameters> params)
 			if (!ll_change_installation_reason (
 						pkgdb,
 						mdata,
-						INSTALLATION_REASON_AUTO))
+						INSTALLATION_REASON_MANUAL))
 			{
 				return false;
 			}
@@ -635,6 +635,12 @@ bool install_packages(shared_ptr<Parameters> params)
 		{
 			printf ("ll unpacking package %s@%s\n", mdata->name.c_str(),
 					Architecture::to_string (mdata->architecture).c_str());
+
+			/* Set installation reason before storing a package in the db (this
+			 * does not change the reason, only sets it if it has not been set -
+			 * changing would have been performed before. */
+			mdata->installation_reason = ig_node->installed_automatically ?
+				INSTALLATION_REASON_AUTO : INSTALLATION_REASON_MANUAL;
 
 			/* Integrity protection */
 			if (change && mdata->state == PKG_STATE_PREINST_BEGIN)
