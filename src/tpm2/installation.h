@@ -69,6 +69,7 @@ bool ll_configure_package (
 
 
 bool ll_change_installation_reason (
+		std::shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
 		std::shared_ptr<PackageMetaData> mdata,
 		char reason);

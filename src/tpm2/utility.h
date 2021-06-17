@@ -50,4 +50,8 @@ parse_cmd_param_result parse_cmd_param (const Parameters& params, const std::str
 
 std::string pkg_state_to_string (int state);
 
+/* Only print the given string/format if @param params->verbose is true. */
+void printf_verbose (std::shared_ptr<Parameters> params, const char* fmt, ...);
+void printf_verbose_flush (std::shared_ptr<Parameters> params, const char* fmt, ...);
+
 #endif /* __UTILITY_H */

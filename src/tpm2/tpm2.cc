@@ -53,6 +53,8 @@ void print_help()
 
 "  --target                Root of the managed system's filesystem\n\n"
 
+"  --verbose               Enable verbose output\n\n"
+
 "  --install               Install or uprade the specified packages\n\n"
 
 "  --adopt-all             Adopt all files without asking\n\n"
@@ -166,6 +168,10 @@ int _main(int argc, char** argv)
 					printf("Only one target may be specified.\n");
 					return 2;
 				}
+			}
+			else if (option == "verbose")
+			{
+				params->verbose = true;
 			}
 			else if (option == "adopt-all")
 			{

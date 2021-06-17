@@ -68,6 +68,9 @@ struct Parameters
 	bool assume_yes = false;
 	bool adopt_all = false;
 
+	/* Verbose output */
+	bool verbose = false;
+
 	/* Methods */
 	bool target_is_native() const;
 

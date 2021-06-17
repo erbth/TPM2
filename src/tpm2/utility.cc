@@ -1,6 +1,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <cstdarg>
 #include <regex>
 #include <system_error>
 #include "utility.h"
@@ -24,9 +25,14 @@ void print_target(shared_ptr<Parameters> params, bool to_stderr)
 	FILE* stream = to_stderr ? stderr : stdout;
 
 	if (params->target_is_native())
-		fprintf (stream, "Runtime system is native\n");
+	{
+		if (params->verbose)
+			fprintf (stream, "Runtime system is native\n");
+	}
 	else
+	{
 		fprintf (stream, "Runtime system is at \"%s\"\n", params->target.c_str());
+	}
 }
 
 
@@ -254,4 +260,29 @@ string pkg_state_to_string (int state)
 		default:
 			return "???";
 	};
+}
+
+
+void printf_verbose (shared_ptr<Parameters> params, const char* fmt, ...)
+{
+	if (params->verbose)
+	{
+		va_list ap;
+		va_start(ap, fmt);
+		vprintf (fmt, ap);
+		va_end(ap);
+	}
+}
+
+void printf_verbose_flush (shared_ptr<Parameters> params, const char* fmt, ...)
+{
+	if (params->verbose)
+	{
+		va_list ap;
+		va_start(ap, fmt);
+		vprintf (fmt, ap);
+		va_end(ap);
+
+		fflush(stdout);
+	}
 }

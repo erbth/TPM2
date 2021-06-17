@@ -1,6 +1,7 @@
 # Files related to VIM
 *.swp
 mysession.vim
+tags
 
 # Binary directory
 /build

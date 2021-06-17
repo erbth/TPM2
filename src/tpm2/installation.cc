@@ -209,107 +209,110 @@ bool install_packages(shared_ptr<Parameters> params)
 			false);
 
 
-	printf ("unpack order:\n");
-	for (auto& op : unpack_order)
+	if (params->verbose)
 	{
-		string name, op_name, version;
-
-		switch (op.operation)
+		printf ("unpack order:\n");
+		for (auto& op : unpack_order)
 		{
-			case depres::pkg_operation::INSTALL_NEW:
-				name = op.ig_node->chosen_version->get_name();
-				version = op.ig_node->chosen_version->get_binary_version().to_string();
-				op_name = "install_new";
-				break;
+			string name, op_name, version;
 
-			case depres::pkg_operation::REMOVE:
-				name = op.pkg->name;
-				version = op.pkg->version.to_string();
-				op_name = "remove";
-				break;
+			switch (op.operation)
+			{
+				case depres::pkg_operation::INSTALL_NEW:
+					name = op.ig_node->chosen_version->get_name();
+					version = op.ig_node->chosen_version->get_binary_version().to_string();
+					op_name = "install_new";
+					break;
 
-			case depres::pkg_operation::CHANGE_REMOVE:
-				name = op.pkg->name;
-				version = op.pkg->version.to_string();
-				op_name = "change_remove";
-				break;
+				case depres::pkg_operation::REMOVE:
+					name = op.pkg->name;
+					version = op.pkg->version.to_string();
+					op_name = "remove";
+					break;
 
-			case depres::pkg_operation::CHANGE_INSTALL:
-				name = op.ig_node->chosen_version->get_name();
-				version = op.ig_node->chosen_version->get_binary_version().to_string();
-				op_name = "change_install";
-				break;
+				case depres::pkg_operation::CHANGE_REMOVE:
+					name = op.pkg->name;
+					version = op.pkg->version.to_string();
+					op_name = "change_remove";
+					break;
 
-			case depres::pkg_operation::REPLACE_REMOVE:
-				name = op.pkg->name;
-				version = op.pkg->version.to_string();
-				op_name = "replace_remove";
-				break;
+				case depres::pkg_operation::CHANGE_INSTALL:
+					name = op.ig_node->chosen_version->get_name();
+					version = op.ig_node->chosen_version->get_binary_version().to_string();
+					op_name = "change_install";
+					break;
 
-			case depres::pkg_operation::REPLACE_INSTALL:
-				name = op.ig_node->chosen_version->get_name();
-				version = op.ig_node->chosen_version->get_binary_version().to_string();
-				op_name = "replace_install";
-				break;
+				case depres::pkg_operation::REPLACE_REMOVE:
+					name = op.pkg->name;
+					version = op.pkg->version.to_string();
+					op_name = "replace_remove";
+					break;
 
-			default:
-				break;
+				case depres::pkg_operation::REPLACE_INSTALL:
+					name = op.ig_node->chosen_version->get_name();
+					version = op.ig_node->chosen_version->get_binary_version().to_string();
+					op_name = "replace_install";
+					break;
+
+				default:
+					break;
+			}
+
+			printf ("  %s:%s - %s\n", name.c_str(), version.c_str(), op_name.c_str());
 		}
 
-		printf ("  %s:%s - %s\n", name.c_str(), version.c_str(), op_name.c_str());
-	}
-
-	printf ("configure order:\n");
-	for (auto& op : configure_order)
-	{
-		string name, op_name, version;
-
-		switch (op.operation)
+		printf ("configure order:\n");
+		for (auto& op : configure_order)
 		{
-			case depres::pkg_operation::INSTALL_NEW:
-				name = op.ig_node->chosen_version->get_name();
-				version = op.ig_node->chosen_version->get_binary_version().to_string();
-				op_name = "install_new";
-				break;
+			string name, op_name, version;
 
-			case depres::pkg_operation::REMOVE:
-				name = op.pkg->name;
-				version = op.pkg->version.to_string();
-				op_name = "remove";
-				break;
+			switch (op.operation)
+			{
+				case depres::pkg_operation::INSTALL_NEW:
+					name = op.ig_node->chosen_version->get_name();
+					version = op.ig_node->chosen_version->get_binary_version().to_string();
+					op_name = "install_new";
+					break;
 
-			case depres::pkg_operation::CHANGE_REMOVE:
-				name = op.pkg->name;
-				version = op.pkg->version.to_string();
-				op_name = "change_remove";
-				break;
+				case depres::pkg_operation::REMOVE:
+					name = op.pkg->name;
+					version = op.pkg->version.to_string();
+					op_name = "remove";
+					break;
 
-			case depres::pkg_operation::CHANGE_INSTALL:
-				name = op.ig_node->chosen_version->get_name();
-				version = op.ig_node->chosen_version->get_binary_version().to_string();
-				op_name = "change_install";
-				break;
+				case depres::pkg_operation::CHANGE_REMOVE:
+					name = op.pkg->name;
+					version = op.pkg->version.to_string();
+					op_name = "change_remove";
+					break;
 
-			case depres::pkg_operation::REPLACE_REMOVE:
-				name = op.pkg->name;
-				version = op.pkg->version.to_string();
-				op_name = "replace_remove";
-				break;
+				case depres::pkg_operation::CHANGE_INSTALL:
+					name = op.ig_node->chosen_version->get_name();
+					version = op.ig_node->chosen_version->get_binary_version().to_string();
+					op_name = "change_install";
+					break;
 
-			case depres::pkg_operation::REPLACE_INSTALL:
-				name = op.ig_node->chosen_version->get_name();
-				version = op.ig_node->chosen_version->get_binary_version().to_string();
-				op_name = "replace_install";
-				break;
+				case depres::pkg_operation::REPLACE_REMOVE:
+					name = op.pkg->name;
+					version = op.pkg->version.to_string();
+					op_name = "replace_remove";
+					break;
 
-			default:
-				break;
+				case depres::pkg_operation::REPLACE_INSTALL:
+					name = op.ig_node->chosen_version->get_name();
+					version = op.ig_node->chosen_version->get_binary_version().to_string();
+					op_name = "replace_install";
+					break;
+
+				default:
+					break;
+			}
+
+			printf ("  %s:%s - %s\n", name.c_str(), version.c_str(), op_name.c_str());
 		}
 
-		printf ("  %s:%s - %s\n", name.c_str(), version.c_str(), op_name.c_str());
+		printf ("\n");
 	}
-
-	printf ("\n");
 
 
 	/* Set package states of new packages to wanted. They are invalid now. */
@@ -348,8 +351,8 @@ bool install_packages(shared_ptr<Parameters> params)
 		}
 	}
 
-	/* If packages are to be removed or changed, ask for confirmation. */
-	if (remove_pkgs || change_pkgs)
+	/* Always ask for confirmation if operations will be performed. */
+	if (unpack_order.size())
 	{
 		vector<pair<const string,const int>> to_remove;
 		set<pair<const string,const int>> to_change;
@@ -606,6 +609,7 @@ bool install_packages(shared_ptr<Parameters> params)
 				mdata->installation_reason == INSTALLATION_REASON_MANUAL)
 		{
 			if (!ll_change_installation_reason (
+						params,
 						pkgdb,
 						mdata,
 						INSTALLATION_REASON_AUTO))
@@ -617,6 +621,7 @@ bool install_packages(shared_ptr<Parameters> params)
 				mdata->installation_reason == INSTALLATION_REASON_AUTO)
 		{
 			if (!ll_change_installation_reason (
+						params,
 						pkgdb,
 						mdata,
 						INSTALLATION_REASON_MANUAL))
@@ -885,8 +890,7 @@ bool ll_run_preinst (
 		throw gp_exception ("ll_run_preinst called with pkg in inacceptable state.");
 
 	/* Look for existing files and eventually adopt them */
-	printf ("  Looking for existing files ...");
-	fflush (stdout);
+	printf_verbose_flush (params, "  Looking for existing files ...");
 
 	try
 	{
@@ -945,7 +949,7 @@ bool ll_run_preinst (
 			}
 		}
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -957,8 +961,7 @@ bool ll_run_preinst (
 
 	/* Create DB tuples to make the operation transactional and store maintainer
 	 * scripts. */
-	printf ("  Creating db tuples and storing maintainer scripts ...");
-	fflush (stdout);
+	printf_verbose_flush (params, "  Creating db tuples and storing maintainer scripts ...");
 
 	try
 	{
@@ -980,7 +983,7 @@ bool ll_run_preinst (
 
 		pkgdb.commit();
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -999,8 +1002,7 @@ bool ll_run_preinst (
 	/* Run preinst if available */
 	try
 	{
-		printf ("  Running preinst script ...");
-		fflush (stdout);
+		printf_verbose_flush (params, "  Running preinst script ...");
 
 		auto preinst = pp->get_preinst();
 		if (preinst)
@@ -1014,7 +1016,7 @@ bool ll_run_preinst (
 		mdata->state = change ? PKG_STATE_UNPACK_CHANGE : PKG_STATE_UNPACK_BEGIN;
 		pkgdb.update_state (mdata);
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -1042,8 +1044,7 @@ bool ll_unpack (
 	/* Unpack the archive */
 	try
 	{
-		printf ("  Unpacking the package's archive ...");
-		fflush (stdout);
+		printf_verbose_flush (params, "  Unpacking the package's archive ...");
 
 		if (pp->has_archive())
 			pp->unpack_archive_to_directory (params->target);
@@ -1051,7 +1052,7 @@ bool ll_unpack (
 		mdata->state = change ? PKG_STATE_WAIT_OLD_REMOVED : PKG_STATE_CONFIGURE_BEGIN;
 		pkgdb.update_state (mdata);
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -1088,13 +1089,12 @@ bool ll_configure_package (
 	{
 		try
 		{
-			printf ("  Moving package from wait_old_removed ...");
-			fflush (stdout);
+			printf_verbose_flush (params, "  Moving package from wait_old_removed ...");
 
 			mdata->state = PKG_STATE_CONFIGURE_CHANGE;
 			pkgdb.update_state (mdata);
 
-			printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+			printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 		}
 		catch (exception& e)
 		{
@@ -1107,9 +1107,7 @@ bool ll_configure_package (
 
 	try
 	{
-		printf ("  Running configure script ...");
-		fflush (stdout);
-
+		printf_verbose_flush (params, "  Running configure script ...");
 
 		auto configure = pp ? pp->get_configure() : sms->get_configure();
 		if (configure)
@@ -1124,7 +1122,7 @@ bool ll_configure_package (
 		mdata->state = PKG_STATE_CONFIGURED;
 		pkgdb.update_state (mdata);
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -1138,19 +1136,19 @@ bool ll_configure_package (
 
 
 bool ll_change_installation_reason (
+		shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
 		shared_ptr<PackageMetaData> mdata,
 		char reason)
 {
 	try
 	{
-		printf ("  Changing installation reason ...");
-		fflush (stdout);
+		printf_verbose_flush (params, "  Changing installation reason ...");
 
 		mdata->installation_reason = reason;
 		pkgdb.update_installation_reason (mdata);
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -1545,13 +1543,12 @@ bool ll_unconfigure_package (
 
 	try
 	{
-		printf ("  Marking unconfiguration in db ...");
-		fflush (stdout);
+		printf_verbose_flush (params, "  Marking unconfiguration in db ...");
 
 		mdata->state = change ? PKG_STATE_UNCONFIGURE_CHANGE : PKG_STATE_UNCONFIGURE_BEGIN;
 		pkgdb.update_state (mdata);
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -1563,9 +1560,7 @@ bool ll_unconfigure_package (
 
 	try
 	{
-		printf ("  Running unconfigure script ...");
-		fflush (stdout);
-
+		printf_verbose_flush (params, "  Running unconfigure script ...");
 
 		auto unconfigure = sms.get_unconfigure();
 		if (unconfigure)
@@ -1580,7 +1575,7 @@ bool ll_unconfigure_package (
 		mdata->state = change ? PKG_STATE_WAIT_NEW_UNPACKED : PKG_STATE_RM_FILES_BEGIN;
 		pkgdb.update_state (mdata);
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -1612,13 +1607,12 @@ bool ll_rm_files (
 	{
 		try
 		{
-			printf ("  Moving package from wait_new_unpacked ...");
-			fflush (stdout);
+			printf_verbose_flush (params, "  Moving package from wait_new_unpacked ...");
 
 			mdata->state = PKG_STATE_RM_FILES_CHANGE;
 			pkgdb.update_state (mdata);
 
-			printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+			printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 		}
 		catch (exception& e)
 		{
@@ -1631,9 +1625,7 @@ bool ll_rm_files (
 
 	try
 	{
-		printf ("  Removing files ...");
-		fflush (stdout);
-
+		printf_verbose_flush (params, "  Removing files ...");
 
 		list<PackageDBFileEntry> files = pkgdb.get_files (mdata);
 		list<PackageDBFileEntry> directories;
@@ -1749,7 +1741,7 @@ bool ll_rm_files (
 		mdata->state = change ? PKG_STATE_POSTRM_CHANGE : PKG_STATE_POSTRM_BEGIN;
 		pkgdb.update_state (mdata);
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -1776,9 +1768,7 @@ bool ll_run_postrm (
 
 	try
 	{
-		printf ("  Running postrm script ...");
-		fflush (stdout);
-
+		printf_verbose_flush (params, "  Running postrm script ...");
 
 		auto postrm = sms.get_postrm();
 		if (postrm)
@@ -1789,7 +1779,7 @@ bool ll_run_postrm (
 				run_script (params, *postrm);
 		}
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -1801,8 +1791,7 @@ bool ll_run_postrm (
 
 	try
 	{
-		printf ("  Removing db tuples and stored maintainer scripts ...");
-		fflush (stdout);
+		printf_verbose_flush (params, "  Removing db tuples and stored maintainer scripts ...");
 
 		pkgdb.begin();
 
@@ -1811,7 +1800,7 @@ bool ll_run_postrm (
 
 		pkgdb.commit();
 
-		printf (COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
 	}
 	catch (exception& e)
 	{
@@ -1880,7 +1869,7 @@ bool set_installation_reason (char reason, std::shared_ptr<Parameters> params)
 				mdata->name.c_str(),
 				Architecture::to_string (mdata->architecture).c_str());
 
-		if (!ll_change_installation_reason (pkgdb, mdata, reason))
+		if (!ll_change_installation_reason (params, pkgdb, mdata, reason))
 			return false;
 	}
 
