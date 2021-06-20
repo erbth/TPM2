@@ -66,6 +66,8 @@ shared_ptr<IGNode> Depres2Solver::get_or_add_node(const pair<const string, const
 }
 
 
+/* @param version_index  \in [0, versions_count), bigger for newer version
+ * numbers */
 float Depres2Solver::compute_alpha(
 		const pair<const string, const int> &id,
 		const IGNode* pv,
@@ -387,18 +389,21 @@ bool Depres2Solver::solve()
 		if (pv->marked_for_removal)
 			continue;
 
+		PRINT_DEBUG("Considering node `" << pv->identifier_to_string() << "' ..." << endl);
+
 		/* Find the best-fitting version for the active package */
 		auto version_numbers = cb_list_package_versions(pv->get_name(), pv->get_architecture());
-		sort(version_numbers.begin(), version_numbers.end());
+		sort(version_numbers.begin(), version_numbers.end(),
+				[](auto& a, auto& b) { return a > b; });
 
-		int i = -1;
+		int i = version_numbers.size();
 		float alpha_max = -INFINITY;
 		float alpha_installed = 0.f;
 		shared_ptr<PackageVersion> best_version = nullptr;
 
 		for (auto& version_number : version_numbers)
 		{
-			i++;
+			i--;
 
 			auto version = cb_get_package_version(pv->get_name(), pv->get_architecture(), version_number);
 			if (!version)
@@ -422,10 +427,12 @@ bool Depres2Solver::solve()
 			{
 				alpha_max = alpha;
 				best_version = version;
+
+				PRINT_DEBUG("    -> new max" << endl);
 			}
 		}
 
-		if (!best_version)
+		if (i == (int) version_numbers.size())
 		{
 			errors.push_back("Could not find version for " +
 					pv->identifier_to_string() + ".");
@@ -433,7 +440,7 @@ bool Depres2Solver::solve()
 		}
 
 		/* Require user selected versions */
-		if (alpha_max < -10000.f)
+		if (!best_version || alpha_max < -10000.f)
 		{
 			errors.push_back("Could not find suitable version for " +
 					pv->identifier_to_string() + ".");
