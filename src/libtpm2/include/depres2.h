@@ -9,7 +9,7 @@
 #include <functional>
 #include <map>
 #include <memory>
-#include <set>
+#include <list>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -37,6 +37,8 @@ namespace depres
 
 		unsigned t_eject = 0;
 
+		std::list<Depres2IGNode*>::iterator iactive_queue;
+
 		/* Clear private data to save memory. To be called when the solver is
 		 * finished / when returning G. */
 		void clear_private_data();
@@ -45,7 +47,7 @@ namespace depres
 		/* Should only be created by depres2, but new requires the constructor
 		 * to be public. */
 		Depres2IGNode(
-				SolverInterface& s,
+				Depres2Solver& s,
 				const std::pair<const std::string, const int> &identifier,
 				const bool is_selected,
 				const bool installed_automatically);
@@ -69,6 +71,8 @@ namespace depres
 	/* The depres algorithm version 2.0 */
 	class Depres2Solver : public SolverInterface
 	{
+		friend Depres2IGNode;
+
 	protected:
 		/* [(version, automatically installed)] */
 		std::vector<std::pair<std::shared_ptr<PackageVersion>,bool>> installed_packages;
@@ -80,7 +84,13 @@ namespace depres
 		installation_graph_t G;
 		std::vector<std::string> errors;
 
-		std::set<IGNode*> active;
+		/* Active queue */
+		std::list<Depres2IGNode*> active_queue;
+
+		/* Trying to insert a node again moves it to the back of the queue */
+		void insert_into_active(IGNode*);
+		void remove_from_active(IGNode*);
+
 		FileTrie<IGNode*> files;
 		unsigned t_now = 0;
 

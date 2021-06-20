@@ -26,12 +26,13 @@ namespace depres
 {
 
 Depres2IGNode::Depres2IGNode(
-		SolverInterface& s,
+		Depres2Solver& s,
 		const std::pair<const std::string, const int> &identifier,
 		const bool is_selected,
 		const bool installed_automatically)
 	:
-		IGNode(s, identifier, is_selected, installed_automatically)
+		IGNode(s, identifier, is_selected, installed_automatically),
+		iactive_queue(s.active_queue.end())
 {
 }
 
@@ -59,10 +60,40 @@ shared_ptr<IGNode> Depres2Solver::get_or_add_node(const pair<const string, const
 				identifier,
 				make_shared<Depres2IGNode>(*this, identifier, false, true))).first;
 
-		active.insert(i->second.get());
+		insert_into_active(i->second.get());
 	}
 
 	return i->second;
+}
+
+
+void Depres2Solver::insert_into_active(IGNode* _n)
+{
+	auto n = dynamic_cast<Depres2IGNode*>(_n);
+
+	if (n->iactive_queue == active_queue.end())
+	{
+		active_queue.push_back(n);
+		n->iactive_queue--;
+	}
+	else
+	{
+		/* Node in the queue; move to back */
+		active_queue.splice(
+				active_queue.end(),
+				active_queue,
+				n->iactive_queue);
+	}
+}
+
+void Depres2Solver::remove_from_active(IGNode* _n)
+{
+	auto n = dynamic_cast<Depres2IGNode*>(_n);
+	if (n->iactive_queue != active_queue.end())
+	{
+		active_queue.erase(n->iactive_queue);
+		n->iactive_queue = active_queue.end();
+	}
 }
 
 
@@ -211,7 +242,7 @@ void Depres2Solver::eject_node(IGNode& v, bool put_into_active)
 	v.unset_chosen_version();
 
 	if (put_into_active)
-		active.insert(&v);
+		insert_into_active(&v);
 }
 
 bool Depres2Solver::is_node_unreachable(IGNode& v)
@@ -247,7 +278,7 @@ void Depres2Solver::remove_unreachable_nodes()
 		/* Remove node */
 		eject_node(*v, false);
 
-		active.erase(v.get());
+		remove_from_active(v.get());
 		G.erase(v->identifier);
 
 		/* Check if the node's dependencies became unreachable */
@@ -353,7 +384,7 @@ bool Depres2Solver::solve()
 		for (auto w : v->dependencies)
 		{
 			if (!w->version_is_satisfying())
-				active.insert(w);
+				insert_into_active(w);
 		}
 	}
 
@@ -369,21 +400,19 @@ bool Depres2Solver::solve()
 			v->constraints.insert(make_pair(nullptr, sp.second));
 
 		if (!v->version_is_satisfying())
-			active.insert(v.get());
+			insert_into_active(v.get());
 	}
 
 
 	/* The solver algorithm's main core. */
-	while (active.size())
+	while (!active_queue.empty())
 	{
 		t_now++;
 
-		/* Take an "arbitrary" package - for now the minimum of the set (with
-		 * minimal memory address). Note that cycle detection relies on this
-		 * operation to be deterministic currently. */
-		auto iv = active.begin();
-		auto pv = dynamic_cast<Depres2IGNode*>(*iv);
-		active.erase(iv);
+		/* Take the package at the active queue's front. Note that cycle
+		 * detection relies on this operation to be deterministic currently. */
+		auto pv = active_queue.front();
+		remove_from_active(pv);
 
 		/* Don't evaluate a package that was marked for removal. */
 		if (pv->marked_for_removal)
@@ -543,7 +572,7 @@ bool Depres2Solver::solve()
 					eject_node(*w, false);
 				}
 
-				active.insert(w);
+				insert_into_active(w);
 			}
 		}
 
@@ -561,7 +590,7 @@ bool Depres2Solver::solve()
 					eject_node(*w, false);
 				}
 
-				active.insert(w);
+				insert_into_active(w);
 			}
 		}
 
