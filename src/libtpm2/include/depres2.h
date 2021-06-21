@@ -39,6 +39,8 @@ namespace depres
 
 		std::list<Depres2IGNode*>::iterator iactive_queue;
 
+		unsigned eject_index = 0;
+
 		/* Clear private data to save memory. To be called when the solver is
 		 * finished / when returning G. */
 		void clear_private_data();

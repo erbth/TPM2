@@ -4,6 +4,7 @@
 #include <cmath>
 #include <algorithm>
 #include <deque>
+#include <stack>
 #include "depres2.h"
 #include "architecture.h"
 
@@ -106,37 +107,63 @@ float Depres2Solver::compute_alpha(
 		int version_index, int versions_count)
 {
 	/* Compute c */
+	float c = 0.f;
 	float conflict = false;
 	bool user_pinning = false;
 	bool user_selected = false;
 
-	for (auto [source, constr] : pv->constraints)
 	{
-		if (source == nullptr)
-			user_pinning = true;
+		unsigned t = 0;
 
-		if (constr->fulfilled(
-					version->get_source_version(),
-					version->get_binary_version()))
+		for (auto [source, constr] : pv->constraints)
 		{
-			/* Prefer user selected version */
 			if (source == nullptr)
-				user_selected = true;
+				user_pinning = true;
+
+			if (constr->fulfilled(
+						version->get_source_version(),
+						version->get_binary_version()))
+			{
+				/* Prefer user selected version */
+				if (source == nullptr)
+					user_selected = true;
+			}
+			else
+			{
+				conflict = true;
+
+				if (source)
+				{
+					auto t_w = dynamic_cast<const Depres2IGNode*>(source)->t_eject;
+					if (t_w > t)
+						t = t_w;
+				}
+			}
+		}
+
+		/* If an arbitrary version is user selected, this version could be
+		 * chosen. */
+		if (pv->is_selected && !user_pinning)
+			user_selected = true;
+
+		if (conflict)
+		{
+			if (user_selected)
+			{
+				c = -1;
+			}
+			else
+			{
+				/* Prefer the version which did least recently eject a parent */
+				float theta = t_now >= t ? (1.f / (t_now - t + 1)) : 0.f;
+				c = -9 - theta;
+			}
 		}
 		else
-			conflict = true;
+		{
+			c = user_selected ? 1 : 0;
+		}
 	}
-
-	/* If an arbitrary version is user selected, this version could be
-	 * chosen. */
-	if (pv->is_selected && !user_pinning)
-		user_selected = true;
-
-	float c = 0.f;
-	if (conflict)
-		c = user_selected ? -1000 : -INFINITY;
-	else
-		c = user_selected ? 1000 : 0;
 
 	/* Compute d */
 	/* Test if the version can be installed without ejecting other
@@ -220,7 +247,7 @@ float Depres2Solver::compute_alpha(
 	}
 
 	/* Combine components into a score of the package */
-	float alpha = 1.f * c + 2.f * d + 8.f * f + .2f * b;
+	float alpha = 1000.f * c + 2.f * d + 8.f * f + .2f * b;
 
 	PRINT_DEBUG(pv->identifier_to_string() + ":" + version->get_binary_version().to_string() <<
 		" c = " << c << ", d = " << d << ", f = " << f << ", b = " << b <<
@@ -410,7 +437,9 @@ bool Depres2Solver::solve()
 		t_now++;
 
 		/* Take the package at the active queue's front. Note that cycle
-		 * detection relies on this operation to be deterministic currently. */
+		 * detection relies on this operation to be deterministic currently.
+		 * However I'm not sure if all other assumptions of cycle detection
+		 * still hold... */
 		auto pv = active_queue.front();
 		remove_from_active(pv);
 
@@ -469,7 +498,7 @@ bool Depres2Solver::solve()
 		}
 
 		/* Require user selected versions */
-		if (!best_version || alpha_max < -10000.f)
+		if (!best_version || alpha_max < -100000.f)
 		{
 			errors.push_back("Could not find suitable version for " +
 					pv->identifier_to_string() + ".");
@@ -534,12 +563,62 @@ bool Depres2Solver::solve()
 					)
 			   )
 			{
-				PRINT_DEBUG("  marking for removal: alpha_max = " << alpha_max <<
-						" / alpha_installed: " << alpha_installed);
+				/* Only remove this node if there is no selected dependee */
+				/* Do a DFS traversal */
+				bool selected_dependee = false;
 
-				eject_node(*pv, false);
-				pv->marked_for_removal = true;
-				continue;
+				/* having a visited set is a bad but pragmatic workaround. */
+				set<IGNode*> visited;
+				stack<IGNode*> s;
+				s.push(pv);
+				visited.insert(pv);
+
+				while (!s.empty() && !selected_dependee)
+				{
+					auto v = s.top();
+					s.pop();
+
+					for (auto u : v->reverse_dependencies)
+					{
+						if (u->is_selected)
+						{
+							selected_dependee = true;
+							break;
+						}
+						else if (visited.find(u) == visited.end())
+						{
+							s.push(u);
+							visited.insert(u);
+						}
+					}
+
+					if (selected_dependee)
+						break;
+
+					for (auto u : v->reverse_pre_dependencies)
+					{
+						if (u->is_selected)
+						{
+							selected_dependee = true;
+							break;
+						}
+						else if (visited.find(u) == visited.end())
+						{
+							s.push(u);
+							visited.insert(u);
+						}
+					}
+				}
+
+				if (!selected_dependee)
+				{
+					PRINT_DEBUG("  marking for removal: alpha_max = " << alpha_max <<
+							" / alpha_installed: " << alpha_installed);
+
+					eject_node(*pv, false);
+					pv->marked_for_removal = true;
+					continue;
+				}
 			}
 		}
 
@@ -608,17 +687,29 @@ bool Depres2Solver::solve()
 			 * edges. */
 			if (alpha_max < 0.f)
 			{
-				auto constrs = pv->constraints;
-				for (auto [source, constr] : constrs)
+				/* Try to not always eject the same node. */
+				vector<pair<IGNode*, std::shared_ptr<const PackageConstraints::Formula>>>
+					constrs(pv->constraints.begin(), pv->constraints.end());
+
+				int new_eject_index = -1;
+
+				for (unsigned i = pv->eject_index; i < pv->eject_index + constrs.size(); i++)
 				{
+					auto [source, constr] = constrs[i % constrs.size()];
 					if (source && !constr->fulfilled(
 								pv->chosen_version->get_source_version(),
 								pv->chosen_version->get_binary_version()))
 					{
 						PRINT_DEBUG("  Ejecting dependee " << source->identifier_to_string() << "." << endl);
 						eject_node(*source, true);
+
+						if (new_eject_index < 0)
+							new_eject_index = i;
 					}
 				}
+
+				if (new_eject_index >= 0)
+					pv->eject_index += new_eject_index;
 			}
 
 			/* Eject packages which conflict by their files and insert the package's
