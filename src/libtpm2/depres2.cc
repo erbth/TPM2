@@ -212,7 +212,8 @@ float Depres2Solver::compute_alpha(
 	/* t_now - t < 0 => overflow => eject happened a long time ago */
 	float theta = t_now >= t ? (1.f / (t_now - t + 1)) : 0.f;
 	PRINT_DEBUG("theta = " << theta << endl);
-	float d = mu > 0.f ? (-1.f - .3125f * mu - .5f * theta) : 0.f;
+	// float d = mu > 0.f ? (-1.f - .3125f * mu - .5f * theta) : 0.f;
+	float d = mu > 0.f ? (-1.f - .0625f * mu - .5f * theta) : 0.f;
 
 	/* Compute f */
 	float f = 0.f;
