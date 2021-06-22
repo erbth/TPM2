@@ -645,6 +645,11 @@ bool Depres2Solver::solve()
 			}
 			else
 			{
+				/* Don't eject the currently considered node in case of a cycle
+				 * */
+				if (w == pv)
+					continue;
+
 				if (w->chosen_version && !w->version_is_satisfying())
 				{
 					PRINT_DEBUG("    " << w->identifier_to_string() << endl);
@@ -663,6 +668,11 @@ bool Depres2Solver::solve()
 			}
 			else
 			{
+				/* Don't eject the currently considered node in case of a cycle
+				 * */
+				if (w == pv)
+					continue;
+
 				if (w->chosen_version && !w->version_is_satisfying())
 				{
 					PRINT_DEBUG("    " << w->identifier_to_string() << " (pre)" << endl);
