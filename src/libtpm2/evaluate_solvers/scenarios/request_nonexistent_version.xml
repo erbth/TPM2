@@ -1,0 +1,28 @@
+<scenario name="request_nonexistent_version">
+	<universe>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.0</source_version>
+			<binary_version>1.0</binary_version>
+		</pkg>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<source_version>1.1</source_version>
+			<binary_version>1.1</binary_version>
+		</pkg>
+	</universe>
+	<installed>
+	</installed>
+	<selected>
+		<pkg>
+			<name>a</name>
+			<arch>amd64</arch>
+			<constr type="gt">1.1</constr>
+		</pkg>
+	</selected>
+	<desired>
+		<error>Could not find suitable version for a@amd64.</error>
+	</desired>
+</scenario>

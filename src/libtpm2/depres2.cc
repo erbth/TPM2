@@ -148,7 +148,13 @@ float Depres2Solver::compute_alpha(
 
 		if (conflict)
 		{
-			if (user_selected)
+			/* Do not choose versions that contradict user-specified
+			 * constraints. */
+			if (user_pinning && !user_selected)
+			{
+				c = -INFINITY;
+			}
+			else if (user_selected)
 			{
 				c = -1;
 			}
