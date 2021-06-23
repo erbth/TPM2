@@ -73,6 +73,42 @@ def read_index(size, f):
         print("Have index.")
         f.seek(size, 1)
 
+def read_config_files(size, f):
+    f2 = None
+    if unpack:
+        f2 = open('config_files', 'w', encoding='utf8')
+    else:
+        print("\nConfig files:")
+
+    try:
+        while size > 0:
+            entry_size = 0
+            path = b''
+            while True:
+                c = f.read(1)
+                entry_size += 1
+
+                if c == b'\0':
+                    break
+                path += c
+
+            path = path.decode('utf8')
+            size -= entry_size
+
+            if f2:
+                f2.write("%s\n" % path)
+            else:
+                print("    %s" % path)
+
+        if f2:
+            print("wrote config_files")
+        else:
+            print()
+
+    finally:
+        if f2:
+            f2.close()
+
 def extract_archive(size, f):
     if unpack:
         if os.path.exists('./destdir'):
@@ -175,6 +211,8 @@ def main():
                     read_meta_data(size, f)
                 elif type_ == 0x01:
                     read_index(size, f)
+                elif type_ == 0x02:
+                    read_config_files(size, f)
                 elif type_ == 0x20:
                     write_script(size, f, 'preinst')
                 elif type_ == 0x21:

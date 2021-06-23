@@ -1,8 +1,10 @@
 #include <cerrno>
+#include <cstring>
 #include <climits>
 #include <cstdlib>
 #include <system_error>
 #include <filesystem>
+#include <iostream>
 #include "common_utilities.h"
 
 extern "C" {
@@ -161,4 +163,73 @@ gp_exception::gp_exception (const string& msg)
 const char *gp_exception::what() const noexcept
 {
 	return msg.c_str();
+}
+
+
+TemporaryFile::TemporaryFile (const std::string& name_prefix)
+{
+	char buf[64];
+	strcpy (buf, "/tmp/");
+
+	strncpy (buf + 5, name_prefix.c_str(), sizeof(buf) - 7 - 5);
+	buf[sizeof(buf) - 7] = '\0';
+	strcat(buf, "XXXXXX");
+
+	file_fd = mkstemp(buf);
+	if (file_fd < 0)
+		throw system_error (error_code (errno, generic_category()));
+
+	file_path = move(string(buf, strlen(buf)));
+}
+
+TemporaryFile::~TemporaryFile()
+{
+	close();
+
+	if (!unowned)
+	{
+		if (unlink (file_path.c_str()) < 0)
+		{
+			auto err = errno;
+			char buf[1024];
+
+			cerr << "unlink of temporary file `" << file_path << "' failed: " <<
+				strerror_r(err, buf, sizeof(buf)) << endl;
+		}
+	}
+}
+
+string TemporaryFile::path() const noexcept
+{
+	return file_path;
+}
+
+void TemporaryFile::append_string (const string& s)
+{
+	if (file_fd < 0)
+		throw gp_exception("Attempted to write to closed temporary file...");
+
+	size_t written = 0;
+	while (written < s.size())
+	{
+		auto ret = write (file_fd, s.c_str() + written, s.size() - written);
+		if (ret <= 0)
+			throw system_error (error_code (errno, generic_category()));
+
+		written += ret;
+	}
+}
+
+void TemporaryFile::close()
+{
+	if (file_fd >= 0)
+	{
+		::close (file_fd);
+		file_fd = -1;
+	}
+}
+
+void TemporaryFile::set_unowned()
+{
+	unowned = true;
 }

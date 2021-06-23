@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <system_error>
+#include <optional>
 #include "package_provider.h"
 #include "directory_repository.h"
 #include "common_utilities.h"
@@ -130,6 +132,32 @@ shared_ptr<FileList> ProvidedPackage::get_file_list()
 }
 
 
+shared_ptr<vector<string>> ProvidedPackage::get_config_files()
+{
+	if (!config_files)
+	{
+		for (const auto& sec : toc.sections)
+		{
+			if (sec.type == tf::SEC_TYPE_CONFIG_FILES)
+			{
+				ensure_read_stream();
+
+				if (rs->tell() != sec.start)
+					rs->seek (sec.start);
+
+				config_files = tf::read_config_files (*rs, sec.size);
+			}
+		}
+
+		if (!config_files)
+			config_files = make_shared<vector<string>>();
+	}
+
+	sort(config_files->begin(), config_files->end());
+	return config_files;
+}
+
+
 shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_preinst()
 {
 	if (!preinst)
@@ -251,7 +279,7 @@ void ProvidedPackage::clear_buffers()
 }
 
 
-void ProvidedPackage::unpack_archive_to_directory(const string& dst)
+void ProvidedPackage::unpack_archive_to_directory(const string& dst, vector<string>* excluded_paths)
 {
 	size_t archive_size = 0;
 
@@ -272,6 +300,19 @@ void ProvidedPackage::unpack_archive_to_directory(const string& dst)
 
 	if (!archive_size)
 		return;
+
+
+	/* Construct a temporary file containing paths to exclude. */
+	optional<TemporaryFile> exclude_file;
+	if (excluded_paths && !excluded_paths->empty())
+	{
+		exclude_file.emplace ("tpm2-excl");
+
+		for (auto& f : *excluded_paths)
+			exclude_file->append_string ("." + f + "\n");
+
+		exclude_file->close();
+	}
 
 
 	/* Start Tar as subprocess */
@@ -295,6 +336,11 @@ void ProvidedPackage::unpack_archive_to_directory(const string& dst)
 
 	if (pid == 0)
 	{
+		/* This is an implicite copy, hence disable deleting the file on
+		 * destruction (usually the destructor won't be run anyway). */
+		if (exclude_file)
+			exclude_file->set_unowned();
+
 		/* In the child */
 		ret = dup2 (pipefds[0], STDIN_FILENO);
 		if (ret < 0)
@@ -306,7 +352,17 @@ void ProvidedPackage::unpack_archive_to_directory(const string& dst)
 		close (pipefds[0]);
 		close (pipefds[1]);
 
-		execlp ("tar", "tar", "-xC", dst.c_str(), nullptr);
+
+		/* Exclude files */
+		if (exclude_file)
+		{
+			execlp ("tar", "tar", "-xC", dst.c_str(),
+					"-X", exclude_file->path().c_str(), nullptr);
+		}
+		else
+		{
+			execlp ("tar", "tar", "-xC", dst.c_str(), nullptr);
+		}
 
 		fprintf (stderr, "Failed to exec tar: %s.\n", strerror (errno));
 		exit (1);

@@ -55,4 +55,42 @@ public:
 	const char *what() const noexcept override;
 };
 
+
+/* Create a temporary file, which will be unlinked when the object is deleted.
+ * All operatios (except those marked 'noexcept') may throw a system_error if
+ * low-level io operations fail. */
+class TemporaryFile
+{
+protected:
+	int file_fd;
+	std::string file_path;
+	bool unowned = false;
+
+public:
+	/* @param name_prefix must be at lead 6 characters long. */
+	TemporaryFile (const std::string& name_prefix);
+	virtual ~TemporaryFile();
+
+	TemporaryFile (const TemporaryFile&) = delete;
+	TemporaryFile (TemporaryFile&&) = delete;
+
+	TemporaryFile& operator= (const TemporaryFile&) = delete;
+	TemporaryFile& operator= (TemporaryFile&&) = delete;
+
+	/* Get the file's path */
+	std::string path() const noexcept;
+
+	/* Append a string to the file (opens it automatically if required). If the
+	 * file has been closed already, throw a gp_exception. */
+	void append_string (const std::string& s);
+
+	/* Close the file if it is open */
+	void close();
+
+	/* Signal that the actual temporary file should not be owned by this
+	 * `TemporaryFile` instance anymore. If called, the file won't be unlinked
+	 * by the destructor. Useful after fork(). */
+	void set_unowned();
+};
+
 #endif /* __COMMON_UTILITIES_H */

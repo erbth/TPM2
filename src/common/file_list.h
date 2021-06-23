@@ -55,6 +55,16 @@ struct FileRecord
 	 * or its attributes match with this FileRecord's. This may raise an
 	 * std::exception or descendent class ... */
 	bool non_existent_or_matches (const std::string& root, std::ostream *out = nullptr) const;
+
+	virtual ~FileRecord();
+};
+
+
+/* A dummy file record that has only a path. It can be used to find files by
+ * path in a FileList. */
+struct DummyFileRecord : public FileRecord
+{
+	DummyFileRecord(const std::string& path);
 };
 
 
@@ -69,6 +79,8 @@ public:
 
 	std::set<FileRecord>::const_iterator begin() const noexcept;
 	std::set<FileRecord>::const_iterator end() const noexcept;
+
+	std::set<FileRecord>::const_iterator find(const FileRecord& file) const;
 };
 
 #endif /* __FILE_LIST_H */

@@ -614,7 +614,7 @@ bool Depres2Solver::solve()
 				if (!selected_dependee)
 				{
 					PRINT_DEBUG("  marking for removal: alpha_max = " << alpha_max <<
-							" / alpha_installed: " << alpha_installed);
+							" / alpha_installed: " << alpha_installed << endl);
 
 					eject_node(*pv, false);
 					pv->marked_for_removal = true;

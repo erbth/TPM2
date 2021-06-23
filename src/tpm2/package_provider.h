@@ -31,6 +31,7 @@ private:
 	std::shared_ptr<TransportForm::ReadStream> rs;
 
 	std::shared_ptr<FileList> files;
+	std::shared_ptr<std::vector<std::string>> config_files;
 
 	std::vector<std::string> file_paths;
 	std::vector<std::string> directory_paths;
@@ -60,6 +61,8 @@ public:
 	std::vector<std::pair<std::pair<std::string, int>, std::shared_ptr<const PackageConstraints::Formula>>>
 		get_pre_dependencies() override;
 
+	/* Because FileList is a set, these vectors are sorted in ascending order.
+	 * */
 	const std::vector<std::string> &get_files() override;
 	const std::vector<std::string> &get_directories() override;
 
@@ -70,6 +73,13 @@ public:
 	/* This will always return a valid pointer. If the package has no files, the
 	 * list is simply empty. */
 	std::shared_ptr<FileList> get_file_list();
+
+	/* This will always return a valid pointer. If the package has no files, the
+	 * list is simply empty. Files are sorted ascendingly by path. It's best to
+	 * first access get_file_list because the file index comes before the config
+	 * files in the transport form and hence avoids a potentially expensive seek
+	 * in a compressed archive. */
+	std::shared_ptr<std::vector<std::string>> get_config_files();
 
 	/* These do only return something other than nullptr if the corresponding
 	 * maintainer script is present. */
@@ -83,7 +93,9 @@ public:
 	void clear_buffers();
 
 	/* Take care: This calls exec and does NOT close fds before! */
-	void unpack_archive_to_directory(const std::string& dst);
+	void unpack_archive_to_directory(
+			const std::string& dst,
+			std::vector<std::string>* excluded_paths);
 };
 
 

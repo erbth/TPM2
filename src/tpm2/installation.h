@@ -54,7 +54,8 @@ bool ll_unpack (
 		PackageDB& pkgdb,
 		std::shared_ptr<PackageMetaData> mdata,
 		std::shared_ptr<ProvidedPackage> pp,
-		bool change);
+		bool change,
+		FileTrie<std::vector<PackageMetaData*>>* current_trie);
 
 /* Only on of @param pp and @param sms needs to be present. The package meta
  * data of @param is not used as the package is installed already and may have a
@@ -132,5 +133,9 @@ bool ll_run_postrm (
 		std::shared_ptr<PackageMetaData> mdata,
 		StoredMaintainerScripts& sms,
 		bool change);
+
+
+/*************************** Config file handling *****************************/
+bool config_file_differs (std::shared_ptr<Parameters> params, const PackageDBFileEntry& file);
 
 #endif /* __INSTALLATION_H */

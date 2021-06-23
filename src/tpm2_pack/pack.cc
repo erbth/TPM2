@@ -328,11 +328,30 @@ bool pack (const string& _dir)
 	}
 
 
+	/* Read config file patterns (default to /etc/.*) */
+	vector<regex> config_file_patterns;
+	auto config_file_patterns_path = dir / "config_file_patterns";
+
+	if (fs::is_regular_file (config_file_patterns_path))
+	{
+		ifstream f(config_file_patterns_path);
+		string line;
+		while (getline(f, line))
+			config_file_patterns.push_back(regex(line));
+	}
+	else
+	{
+		config_file_patterns.push_back(regex("/etc/.*"));
+	}
+
 	/* Index and archive the files that will be part of the package */
 	fs::path destdir_path = dir / "destdir";
 
 	DynamicBuffer<uint8_t> file_index;
 	size_t file_index_size = 0;
+
+	DynamicBuffer<uint8_t> config_files;
+	size_t config_files_size = 0;
 
 	DynamicBuffer<uint8_t> archive;
 	size_t archive_size = 0;
@@ -351,6 +370,13 @@ bool pack (const string& _dir)
 
 			tf.set_file_index ((const char*) file_index.buf, file_index_size);
 			tf.set_archive (archive.buf, archive_size);
+
+			/* Identify config files */
+			if (!create_config_files (destdir_path, config_files, config_files_size,
+						config_file_patterns))
+				return false;
+
+			tf.set_config_files ((const char*) config_files.buf, config_files_size);
 		}
 	}
 
@@ -594,6 +620,137 @@ bool create_file_index (const fs::path& dir, DynamicBuffer<uint8_t>& dst, size_t
 		return false;
 
 	return true;
+}
+
+
+bool create_config_files (const fs::path& dir, DynamicBuffer<uint8_t>& dst, size_t& size,
+		const vector<regex>& patterns)
+{
+	printf ("\n    Config files:\n");
+
+	struct path_component
+	{
+		fs::path location;
+		fs::path virtual_path;
+		DIR *dir;
+	};
+
+	bool success = true;
+	stack<path_component> dirs;
+
+	size = 0;
+
+	/* Start with the root */
+	{
+		DIR *first_dir = opendir (dir.c_str());
+		if (!first_dir)
+		{
+			fprintf(stderr, "Failed to find config files: %s\n", strerror (errno));
+			success = false;
+		}
+
+		dirs.push({dir, "/", first_dir});
+	}
+
+	/* Traverse in DFS pre-order manner ('pre-order' is actually not important
+	 * because directories cannot be config files...) */
+	while (success && dirs.size() > 0)
+	{
+		errno = 0;
+
+		struct dirent *dent = readdir (dirs.top().dir);
+
+		if (!dent && errno == 0)
+		{
+			/* Go up */
+			closedir (dirs.top().dir);
+			dirs.pop();
+		}
+		else if (!dent)
+		{
+			/* Error */
+			fprintf(stderr, "Failed to open directory %s: %s\n",
+					dirs.top().location.c_str(), strerror (errno));
+
+			success = false;
+		}
+		else
+		{
+			/* Filter */
+			if (strcmp (dent->d_name, ".") == 0 ||
+					strcmp (dent->d_name, "..") == 0)
+			{
+				continue;
+			}
+
+			fs::path elem_location = dirs.top().location / dent->d_name;
+			fs::path elem_virtual_path = dirs.top().virtual_path / dent->d_name;
+
+			struct stat statbuf;
+			if (lstat (elem_location.c_str(), &statbuf) < 0)
+			{
+				fprintf (stderr, "Failed to stat %s: %s\n",
+						elem_location.c_str(), strerror(errno));
+
+				success = false;
+				break;
+			}
+
+			if (S_ISDIR(statbuf.st_mode))
+			{
+				/* Recursively traverse directories */
+				DIR *child = opendir (elem_location.c_str());
+				if (!child)
+				{
+					fprintf (stderr, "Failed to open directory %s: %s\n",
+							elem_location.c_str(), strerror (errno));
+
+					success = false;
+				}
+				else
+				{
+					dirs.push({elem_location, elem_virtual_path, child});
+				}
+			}
+			else if (S_ISLNK(statbuf.st_mode) || S_ISREG(statbuf.st_mode))
+			{
+				/* Test if this is a config file, and if yes, add it to the
+				 * config file list. */
+				bool found = false;
+
+				for (auto& pattern : patterns)
+				{
+					cmatch match;
+					if (regex_match(elem_virtual_path.c_str(), match, pattern))
+					{
+						found = true;
+						break;
+					}
+				}
+
+				if (!found)
+					continue;
+
+				/* Add the path to the list */
+				printf ("        %s\n", elem_virtual_path.c_str());
+
+				auto path_len = strlen (elem_virtual_path.c_str()) + 1;
+				dst.ensure_size (size + path_len);
+				memcpy (dst.buf + size, elem_virtual_path.c_str(), path_len);
+
+				size += path_len;
+			}
+		}
+	}
+
+	/* Clean up */
+	while (dirs.size() > 0)
+	{
+		closedir (dirs.top().dir);
+		dirs.pop();
+	}
+
+	return success;
 }
 
 

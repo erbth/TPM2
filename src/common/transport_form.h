@@ -66,6 +66,7 @@ namespace TransportForm
 
 	const uint8_t SEC_TYPE_DESC = 0x00;
 	const uint8_t SEC_TYPE_FILE_INDEX = 0x01;
+	const uint8_t SEC_TYPE_CONFIG_FILES = 0x02;
 	const uint8_t SEC_TYPE_PREINST = 0x20;
 	const uint8_t SEC_TYPE_CONFIGURE = 0x21;
 	const uint8_t SEC_TYPE_UNCONFIGURE = 0x22;
@@ -116,6 +117,9 @@ namespace TransportForm
 		const char *file_index = nullptr;
 		size_t file_index_size = 0;
 
+		const char *config_files = nullptr;
+		size_t config_files_size = 0;
+
 		const char *preinst = nullptr;
 		size_t preinst_size = 0;
 
@@ -135,6 +139,7 @@ namespace TransportForm
 	public:
 		void set_desc (const char *desc, size_t size);
 		void set_file_index (const char *file_index, size_t size);
+		void set_config_files (const char *config_files, size_t size);
 
 		void set_preinst (const char *preinst, size_t size);
 		void set_configure (const char *configure, size_t size);
@@ -170,6 +175,10 @@ namespace TransportForm
 
 	/* This will always return a valid pointer, maybe to an empty list. */
 	std::shared_ptr<FileList> read_file_list (ReadStream& rs, size_t size);
+
+	/* This will always return a valid pointer, maybe to an empty list. The list
+	 * is sorted in ascending order. */
+	std::shared_ptr<std::vector<std::string>> read_config_files (ReadStream& rs, size_t size);
 
 
 	class InvalidToc : public std::exception

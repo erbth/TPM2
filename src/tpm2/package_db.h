@@ -9,22 +9,26 @@
 
 #include <exception>
 #include <list>
+#include <vector>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <optional>
 #include <sqlite3.h>
 #include "parameters.h"
 #include "package_meta_data.h"
 #include "file_list.h"
+#include "version_number.h"
 
 
 struct PackageDBFileEntry
 {
 	char type;
 	std::string path;
-	std::string digest;
+	char sha1_sum[20] = { 0 };
 
-	inline PackageDBFileEntry (char type, const std::string& path, const std::string& digest)
-		: type(type), path(path), digest(digest)
+	inline PackageDBFileEntry (char type, const std::string& path)
+		: type(type), path(path)
 	{ }
 };
 
@@ -65,6 +69,17 @@ public:
 	 * list. */
 	void set_files (std::shared_ptr<PackageMetaData> mdata, std::shared_ptr<FileList> files);
 	std::list<PackageDBFileEntry> get_files (std::shared_ptr<PackageMetaData> mdata);
+
+	std::optional<PackageDBFileEntry> get_file (const PackageMetaData* mdata,
+			const std::string& path);
+
+	/* Neither parameter may be nullptr. The latter cann, howerver, be an empty
+	 * vector. The retrieved file list is sorted by ascending pathname (with
+	 * std::string::less). */
+	void set_config_files (std::shared_ptr<PackageMetaData> mdata,
+			std::shared_ptr<std::vector<std::string>> files);
+
+	std::vector<std::string> get_config_files (std::shared_ptr<PackageMetaData> mdata);
 
 
 	/* Delete a package version and all associated tuples. Does a lot, so it's

@@ -75,7 +75,7 @@ bool FileRecord::operator< (const FileRecord& o) const
 
 bool FileRecord::non_existent_or_matches (const string& root, ostream *out) const
 {
-	const auto& target_path = simplify_path (root + "/" + path);
+	const auto target_path = simplify_path (root + "/" + path);
 
 	struct stat statbuf;
 
@@ -256,6 +256,17 @@ bool FileRecord::non_existent_or_matches (const string& root, ostream *out) cons
 }
 
 
+FileRecord::~FileRecord()
+{
+}
+
+
+DummyFileRecord::DummyFileRecord(const string& path)
+{
+	this->path = path;
+}
+
+
 void FileList::add_file (FileRecord&& file)
 {
 	files.emplace (move(file));
@@ -271,4 +282,10 @@ set<FileRecord>::const_iterator FileList::begin() const noexcept
 set<FileRecord>::const_iterator FileList::end() const noexcept
 {
 	return files.cend();
+}
+
+
+set<FileRecord>::const_iterator FileList::find(const FileRecord& file) const
+{
+	return files.find(file);
 }

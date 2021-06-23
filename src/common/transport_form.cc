@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <system_error>
@@ -117,6 +118,7 @@ TOCSection TOCSection::read_from_binary (ReadStream& rs)
 	{
 		case SEC_TYPE_DESC:
 		case SEC_TYPE_FILE_INDEX:
+		case SEC_TYPE_CONFIG_FILES:
 		case SEC_TYPE_PREINST:
 		case SEC_TYPE_CONFIGURE:
 		case SEC_TYPE_UNCONFIGURE:
@@ -187,6 +189,12 @@ void TransportForm::set_file_index (const char *file_index, size_t size)
 	file_index_size = size;
 }
 
+void TransportForm::set_config_files (const char *config_files, size_t size)
+{
+	this->config_files = config_files;
+	config_files_size = size;
+}
+
 void TransportForm::set_preinst (const char *preinst, size_t size)
 {
 	this->preinst = preinst;
@@ -238,6 +246,10 @@ TableOfContents TransportForm::get_toc() const
 	if (file_index)
 		t.sections.push_back (TOCSection (SEC_TYPE_FILE_INDEX, 0, file_index_size));
 
+	/* Add config files */
+	if (config_files)
+		t.sections.push_back (TOCSection (SEC_TYPE_CONFIG_FILES, 0, config_files_size));
+
 
 	/* Add maintainer scripts if present */
 	if (preinst)
@@ -279,6 +291,9 @@ int TransportForm::write (Writer& w)
 	if ((file_index == nullptr) != (archive == nullptr))
 		return -ENOMEM;
 
+	if ((config_files != nullptr) && (file_index == nullptr))
+		return -ENOMEM;
+
 	/* Write toc */
 	{
 		TableOfContents toc = get_toc();
@@ -301,6 +316,14 @@ int TransportForm::write (Writer& w)
 	if (file_index)
 	{
 		r = w.write (file_index, file_index_size);
+		if (r != 0)
+			return r;
+	}
+
+	/* Write config files if there */
+	if (config_files)
+	{
+		r = w.write (config_files, config_files_size);
 		if (r != 0)
 			return r;
 	}
@@ -422,6 +445,54 @@ shared_ptr<FileList> read_file_list (ReadStream& rs, size_t size)
 		}
 	}
 
+}
+
+
+shared_ptr<vector<string>> read_config_files (ReadStream& rs, size_t size)
+{
+	auto l = make_shared<vector<string>>();
+	DynamicBuffer<char> buf;
+	size_t buf_fill = 0;
+	size_t entry_size = 0;
+
+	/* List entries are delimited by null characters. */
+	for (;;)
+	{
+		if (size > 0)
+		{
+			auto to_read = MIN(size, 4096);
+
+			buf.ensure_size (buf_fill + to_read);
+			rs.read (buf.buf + buf_fill, to_read);
+
+			buf_fill += to_read;
+			size -= to_read;
+		}
+
+		if (buf_fill < 1)
+			break;
+
+		for (;;)
+		{
+			entry_size = strnlen (buf.buf, buf_fill) + 1;
+
+			if (entry_size <= buf_fill)
+			{
+				/* entry_size is always >= 1 */
+				l->emplace_back(buf.buf, entry_size - 1);
+				memmove (buf.buf, buf.buf + entry_size, buf_fill - entry_size);
+				buf_fill -= entry_size;
+			}
+			else
+			{
+				break;
+			}
+		}
+	}
+
+	/* Sort */
+	sort(l->begin(), l->end());
+	return l;
 }
 
 

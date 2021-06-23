@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <map>
@@ -15,9 +16,18 @@
 #include "package_db.h"
 #include "safe_console_input.h"
 #include "package_provider.h"
+#include "message_digest.h"
+
+extern "C"
+{
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+}
 
 using namespace std;
 namespace fs = std::filesystem;
+namespace md = message_digest;
 
 
 bool print_installation_graph(shared_ptr<Parameters> params)
@@ -687,12 +697,12 @@ bool install_packages(shared_ptr<Parameters> params)
 			/* ll unpack */
 			if (mdata->state == PKG_STATE_UNPACK_CHANGE)
 			{
-				if (!ll_unpack (params, pkgdb, mdata, pp, true))
+				if (!ll_unpack (params, pkgdb, mdata, pp, true, current_trie.get()))
 					return false;
 			}
 			else if (mdata->state == PKG_STATE_UNPACK_BEGIN)
 			{
-				if (!ll_unpack (params, pkgdb, mdata, pp, false))
+				if (!ll_unpack (params, pkgdb, mdata, pp, false, current_trie.get()))
 					return false;
 			}
 					
@@ -895,6 +905,7 @@ bool ll_run_preinst (
 	try
 	{
 		auto files = pp->get_file_list();
+		auto config_files = pp->get_config_files();
 
 		bool first = true;
 
@@ -903,7 +914,7 @@ bool ll_run_preinst (
 			stringstream ss;
 
 			/* Augment file trie if one is specified and skip the files from old
-			 * pacakges if change semantics are requested. */
+			 * packages if change semantics are requested. */
 			if (current_trie)
 			{
 				auto h = current_trie->find_directory (file.path);
@@ -919,7 +930,7 @@ bool ll_run_preinst (
 
 				/* Now this file will be registered for at least this package.
 				 * If it belongs to other packages as well, these must be old
-				 * packages (otherwise there would be  a conflict). */
+				 * packages (otherwise there would be a conflict). */
 				if (change && h->data.size() > 1)
 					continue;
 			}
@@ -927,6 +938,11 @@ bool ll_run_preinst (
 			/* Adoption semantics */
 			if (!file.non_existent_or_matches (params->target, &ss))
 			{
+				/* Skip config files , since the config file logic will handle
+				 * them later. */
+				if (binary_search(config_files->begin(), config_files->end(), file.path))
+					continue;
+
 				if (first)
 				{
 					printf ("\n\n");
@@ -959,8 +975,8 @@ bool ll_run_preinst (
 	}
 
 
-	/* Create DB tuples to make the operation transactional and store maintainer
-	 * scripts. */
+	/* Create DB tuples to make the operation transactional, store maintainer
+	 * scripts, and store the list of config files. */
 	printf_verbose_flush (params, "  Creating db tuples and storing maintainer scripts ...");
 
 	try
@@ -972,6 +988,7 @@ bool ll_run_preinst (
 		pkgdb.update_or_create_package (mdata);
 		pkgdb.set_dependencies (mdata);
 		pkgdb.set_files (mdata, pp->get_file_list());
+		pkgdb.set_config_files (mdata, pp->get_config_files());
 
 		StoredMaintainerScripts sms (params, mdata,
 				pp->get_preinst(),
@@ -1029,12 +1046,14 @@ bool ll_run_preinst (
 }
 
 
+/* If change is true, current_trie must be provided. */
 bool ll_unpack (
 		shared_ptr<Parameters> params,
 		PackageDB& pkgdb,
 		shared_ptr<PackageMetaData> mdata,
 		shared_ptr<ProvidedPackage> pp,
-		bool change)
+		bool change,
+		FileTrie<vector<PackageMetaData*>>* current_trie)
 {
 	if (!(
 				(!change && mdata->state == PKG_STATE_UNPACK_BEGIN) ||
@@ -1047,7 +1066,107 @@ bool ll_unpack (
 		printf_verbose_flush (params, "  Unpacking the package's archive ...");
 
 		if (pp->has_archive())
-			pp->unpack_archive_to_directory (params->target);
+		{
+			vector<string> excluded_paths;
+
+			/* Check if config files have to be excluded. Skip the check if the
+			 * package has no config files, because most packages probably don't
+			 * have config files. */
+			auto cfiles = pp->get_config_files();
+			if (!cfiles->empty())
+			{
+				auto files = pp->get_file_list();
+
+				for (auto& cfile : *cfiles)
+				{
+					bool handled = false;
+					if (change)
+					{
+						/* Check if the config file was part of other packages
+						 * or a version of this package before and if it has
+						 * been changed/deleted. If so, do not overwrite it. If
+						 * the file is not part of an installed package version,
+						 * use the semantics for new config files below.
+						 *
+						 * Ignore config files which are not in the archive. */
+						auto h = current_trie->find_directory (cfile);
+						if (h)
+						{
+							for (auto other : h->data)
+							{
+								/* The trie's data can only contain two packages
+								 * - the previous one and this one. */
+								if (other == mdata.get())
+									continue;
+
+								auto file = pkgdb.get_file (other, cfile);
+								if (!file)
+								{
+									throw gp_exception ("ll_unpack: Config file `" + cfile +
+											"' is in file trie but not in the db anymore.");
+								}
+
+								/* Compare the file on the system to the
+								 * information from the the database. If they
+								 * differ, exclude the config file. */
+								if (config_file_differs (params, *file))
+								{
+									printf ("    Config file `%s' was changed.\n", cfile.c_str());
+
+									if (!params->adopt_all)
+									{
+										printf ("    Overwrite it with the packaged version? ");
+										if (safe_query_user_input("yN") == 'n')
+											excluded_paths.push_back(cfile);
+									}
+									else
+									{
+										printf ("    Overwriting because of '--adopt-all\n");
+									}
+								}
+
+								handled = true;
+								break;
+							}
+						}
+					}
+
+					if (!handled)
+					{
+						/* The file was not part of a previous package version.
+						 *
+						 * If the config file exists already and differs, ask
+						 * the user if it should be overwritten or not. In case
+						 * 'adopt_all' has been enabled, just overwrite it. */
+						auto inew = files->find (DummyFileRecord(cfile));
+						stringstream ss;
+
+						/* Ignore config files not in the archive. */
+						if (inew == files->end())
+							continue;
+
+						if (!inew->non_existent_or_matches (params->target, &ss))
+						{
+							printf ("    Config file `%s' already present and differs: %s",
+									cfile.c_str(), ss.str().c_str());
+
+							if (!params->adopt_all)
+							{
+								printf ("    Overwrite it with the packaged version? ");
+								if (safe_query_user_input("yn") == 'n')
+									excluded_paths.push_back(cfile);
+							}
+							else
+							{
+								printf ("    Overwriting because of '--adopt-all\n");
+							}
+						}
+					}
+				}
+			}
+
+			pp->unpack_archive_to_directory (params->target, &excluded_paths);
+		}
 
 		mdata->state = change ? PKG_STATE_WAIT_OLD_REMOVED : PKG_STATE_CONFIGURE_BEGIN;
 		pkgdb.update_state (mdata);
@@ -1696,6 +1815,8 @@ bool ll_rm_files (
 				});
 
 		/* Remove files */
+		auto cfiles = pkgdb.get_config_files (mdata);
+
 		for (auto& f : files)
 		{
 			auto s = fs::symlink_status (f.path);
@@ -1707,6 +1828,26 @@ bool ll_rm_files (
 				 * losses ... */
 				if (!is_directory (s))
 				{
+					/* Do not remove config files that have been changed. */
+					if (binary_search (cfiles.begin(), cfiles.end(), f.path))
+					{
+						auto file = pkgdb.get_file(mdata.get(), f.path);
+						if (file)
+						{
+							if (config_file_differs(params, *file))
+							{
+								printf ("    Not deleting changed config file `%s'.\n",
+										f.path.c_str());
+
+								continue;
+							}
+						}
+						else
+						{
+							throw gp_exception ("ll_rm_files: Config file `" + f.path +
+									"' is in file list but not in the db anymore.");
+						}
+					}
 					fs::remove (f.path);
 				}
 				else
@@ -1874,4 +2015,62 @@ bool set_installation_reason (char reason, std::shared_ptr<Parameters> params)
 	}
 
 	return true;
+}
+
+
+/*************************** Config file handling *****************************/
+bool config_file_differs (shared_ptr<Parameters> params, const PackageDBFileEntry& file)
+{
+	const auto target_path = simplify_path (params->target + "/" + file.path);
+	struct stat statbuf;
+
+	int ret = lstat (target_path.c_str(), &statbuf);
+	if (ret < 0)
+	{
+		if (errno == ENOENT || errno == ENOTDIR)
+			return true;
+
+		throw system_error (error_code (errno, generic_category()));
+	}
+
+	/* Compare type */
+	switch (file.type)
+	{
+		case FILE_TYPE_REGULAR:
+		{
+			if (!S_ISREG (statbuf.st_mode))
+				return true;
+
+			char tmp[20];
+			ret = md::sha1_file (target_path.c_str(), tmp);
+			if (ret < 0)
+				throw system_error (error_code (-ret, generic_category()));
+
+			if (memcmp (tmp, file.sha1_sum, 20) != 0)
+				return true;
+
+			break;
+		}
+
+		case FILE_TYPE_LINK:
+		{
+			if (!S_ISLNK (statbuf.st_mode))
+				return true;
+
+			auto lnk = convenient_readlink (target_path);
+
+			char tmp[20];
+			md::sha1_memory (lnk.c_str(), lnk.size(), tmp);
+
+			if (memcmp (tmp, file.sha1_sum, 20) != 0)
+				return true;
+
+			break;
+		}
+
+		default:
+			return false;
+	}
+
+	return false;
 }

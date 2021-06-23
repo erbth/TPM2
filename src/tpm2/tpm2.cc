@@ -57,7 +57,10 @@ void print_help()
 
 "  --install               Install or uprade the specified packages\n\n"
 
-"  --adopt-all             Adopt all files without asking\n\n"
+"  --adopt-all             Adopt all files without asking. This will also\n"
+"                          overwrite config files that are part of a package to\n"
+"                          be installed/changed and exist on the system already\n"
+"                          with different content.\n\n"
 
 "  --assume-yes            Do not ask for confirmation if the operation shall\n"
 "                          be performed on the packages. However this does not\n"

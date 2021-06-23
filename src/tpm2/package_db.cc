@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <filesystem>
 #include <vector>
-#include "version_number.h"
 
 #include <cstdio>
 
@@ -45,7 +44,7 @@ PackageDB::PackageDB(shared_ptr<Parameters> params)
 		throw CannotOpenDB(err, path);
 	}
 
-	/* If even WAL is to slow, I may consider using MEMORY at the cost of worse
+	/* If even WAL is too slow, I may consider using MEMORY at the cost of worse
 	 * db integrity. */
 	err = sqlite3_exec (pDb, "pragma journal_mode = WAL;", nullptr, nullptr, nullptr);
 	if (err != SQLITE_OK)
@@ -251,7 +250,7 @@ void PackageDB::ensure_schema()
 		/* Nothing left to do. */
 		commit();
 
-		if (v != VersionNumber("1.0"))
+		if (v != VersionNumber("1.1"))
 		{
 			throw PackageDBException (
 					"Unsupported PackageDB version: " + v.to_string());
@@ -309,6 +308,21 @@ void PackageDB::ensure_schema()
 			if (err != SQLITE_OK)
 				throw sqlitedb_exception (err, pDb);
 
+			err = sqlite3_exec (pDb,
+					"create table config_files ("
+						"path varchar,"
+						"pkg_name varchar,"
+						"pkg_architecture integer,"
+						"pkg_version varchar,"
+						"primary key (path, pkg_name, pkg_architecture, pkg_version),"
+						"foreign key (pkg_name, pkg_architecture, pkg_version) "
+							"references packages (name, architecture, version) "
+							"on update cascade on delete cascade);",
+					nullptr, nullptr, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
 
 			err = sqlite3_exec (pDb,
 					"create table pre_dependencies ("
@@ -348,7 +362,7 @@ void PackageDB::ensure_schema()
 
 			/* Set schema version */
 			err = sqlite3_exec (pDb,
-					"insert into schema_version (version) values ('1.0');",
+					"insert into schema_version (version) values ('1.1');",
 					nullptr, nullptr, nullptr);
 
 			if (err != SQLITE_OK)
@@ -1127,12 +1141,21 @@ list<PackageDBFileEntry> PackageDB::get_files (shared_ptr<PackageMetaData> mdata
 			else
 			{
 				if (sqlite3_column_count (pStmt) != 3)
-					throw PackageDBException ("Invalid column count while readin files.");
+					throw PackageDBException ("Invalid column count while reading files.");
 
 				files.emplace_back (
 						sqlite3_column_int (pStmt, 1),
-						(const char*) sqlite3_column_text (pStmt, 0),
-						(const char*) sqlite3_column_text (pStmt, 2));
+						(const char*) sqlite3_column_text (pStmt, 0));
+
+				/* Read file digest */
+				auto digest_size = sqlite3_column_bytes(pStmt, 2);
+				if (digest_size != 0)
+				{
+					if (digest_size != 20)
+						throw PackageDBException ("Invalid digest length while reading files.");
+
+					memcpy (files.back().sha1_sum, sqlite3_column_blob (pStmt, 2), 20);
+				}
 			}
 		}
 
@@ -1147,6 +1170,240 @@ list<PackageDBFileEntry> PackageDB::get_files (shared_ptr<PackageMetaData> mdata
 		throw;
 	}
 
+	return files;
+}
+
+
+optional<PackageDBFileEntry> PackageDB::get_file (const PackageMetaData* mdata,
+		const string& path)
+{
+	optional<PackageDBFileEntry> file;
+	sqlite3_stmt *pStmt = nullptr;
+
+	const std::string& version_string = mdata->version.to_string();
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"select type, digest from files "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3 and path = ?4;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 4, path.c_str(), path.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+
+		for (;;)
+		{
+			err = sqlite3_step (pStmt);
+
+			if (err == SQLITE_DONE)
+			{
+				break;
+			}
+			else if (err != SQLITE_ROW)
+			{
+				throw sqlitedb_exception (err, pDb);
+			}
+			else
+			{
+				if (sqlite3_column_count (pStmt) != 2)
+					throw PackageDBException ("Invalid column count while reading file.");
+
+				file.emplace (
+						sqlite3_column_int (pStmt, 0),
+						path);
+
+				/* Read file digest */
+				auto digest_size = sqlite3_column_bytes(pStmt, 1);
+				if (digest_size != 0)
+				{
+					if (digest_size != 20)
+						throw PackageDBException ("Invalid digest length while reading files.");
+
+					memcpy (file->sha1_sum, sqlite3_column_blob (pStmt, 1), 20);
+				}
+
+				break;
+			}
+		}
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+
+	return file;
+}
+
+
+void PackageDB::set_config_files (shared_ptr<PackageMetaData> mdata, shared_ptr<vector<string>> files)
+{
+	sqlite3_stmt *pStmt = nullptr;
+	const string& version_string = mdata->version.to_string();
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"delete from config_files "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step  (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
+		for (const auto& file : *files)
+		{
+			err = sqlite3_prepare_v2 (pDb,
+					"insert into config_files "
+					"(path, pkg_name, pkg_architecture, pkg_version) "
+					"values (?1, ?2, ?3, ?4);",
+					-1, &pStmt, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			/* Again, not sure if the path would have to survive into the
+			 * potential catch block. */
+			err = sqlite3_bind_text (pStmt, 1, file.c_str(), file.size(), SQLITE_TRANSIENT);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 2, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 3, mdata->architecture);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 4, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_step (pStmt);
+			if (err != SQLITE_DONE)
+				throw sqlitedb_exception (err, pDb);
+
+			sqlite3_finalize (pStmt);
+			pStmt = nullptr;
+		}
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
+vector<string> PackageDB::get_config_files(shared_ptr<PackageMetaData> mdata)
+{
+	vector<string> files;
+	sqlite3_stmt *pStmt = nullptr;
+
+	const std::string& version_string = mdata->version.to_string();
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"select path from files "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+
+		for (;;)
+		{
+			err = sqlite3_step (pStmt);
+
+			if (err == SQLITE_DONE)
+			{
+				break;
+			}
+			else if (err != SQLITE_ROW)
+			{
+				throw sqlitedb_exception (err, pDb);
+			}
+			else
+			{
+				if (sqlite3_column_count (pStmt) != 1)
+					throw PackageDBException ("Invalid column count while reading config files.");
+
+				files.emplace_back ((const char*) sqlite3_column_text (pStmt, 0));
+			}
+		}
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+
+	sort(files.begin(), files.end());
 	return files;
 }
 
@@ -1187,7 +1444,36 @@ void PackageDB::delete_package (shared_ptr<PackageMetaData> mdata)
 		pStmt = nullptr;
 
 
-		/* Delete depenencies */
+		/* Delete config files */
+		err = sqlite3_prepare_v2 (pDb,
+				"delete from config_files "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
+		/* Delete dependencies */
 		err = sqlite3_prepare_v2 (pDb,
 				"delete from dependencies "
 				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
