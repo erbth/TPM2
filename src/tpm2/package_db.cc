@@ -250,7 +250,7 @@ void PackageDB::ensure_schema()
 		/* Nothing left to do. */
 		commit();
 
-		if (v != VersionNumber("1.1"))
+		if (v != VersionNumber("1.2"))
 		{
 			throw PackageDBException (
 					"Unsupported PackageDB version: " + v.to_string());
@@ -360,9 +360,59 @@ void PackageDB::ensure_schema()
 				throw sqlitedb_exception (err, pDb);
 
 
+			/* Triggers */
+			err = sqlite3_exec (pDb,
+					"create table triggers_activate ("
+						"pkg_name varchar,"
+						"pkg_architecture integer,"
+						"pkg_version varchar,"
+						"trigger varchar,"
+						"primary key (pkg_name, pkg_architecture, pkg_version, trigger),"
+						"foreign key (pkg_name, pkg_architecture, pkg_version) "
+							"references packages (name, architecture, version) "
+							"on update cascade on delete cascade);",
+					nullptr, nullptr, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_exec (pDb,
+					"create table triggers_interest ("
+						"pkg_name varchar,"
+						"pkg_architecture integer,"
+						"pkg_version varchar,"
+						"trigger varchar,"
+						"primary key (pkg_name, pkg_architecture, pkg_version, trigger),"
+						"foreign key (pkg_name, pkg_architecture, pkg_version) "
+							"references packages (name, architecture, version) "
+							"on update cascade on delete cascade);",
+					nullptr, nullptr, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_exec (pDb,
+					"create index triggers_interest_index "
+					"on triggers_interest ("
+						"trigger);",
+					nullptr, nullptr, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_exec (pDb,
+					"create table triggers_activated ("
+						"trigger varchar,"
+						"primary key (trigger));",
+					nullptr, nullptr, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+
 			/* Set schema version */
 			err = sqlite3_exec (pDb,
-					"insert into schema_version (version) values ('1.1');",
+					"insert into schema_version (version) values ('1.2');",
 					nullptr, nullptr, nullptr);
 
 			if (err != SQLITE_OK)
@@ -658,9 +708,75 @@ vector<shared_ptr<PackageMetaData>> PackageDB::get_packages_in_state(const int s
 }
 
 
+shared_ptr<PackageMetaData> PackageDB::get_reduced_package (
+		const string& name, const int architecture, const VersionNumber& version)
+{
+	shared_ptr<PackageMetaData> pkg;
+	sqlite3_stmt *pStmt = nullptr;
+
+	string version_string(version.to_string());
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"select name, architecture, version, source_version, installation_reason, state "
+				"from packages "
+				"where name = ?1 and architecture = ?2 and version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, name.c_str(), name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err == SQLITE_ROW)
+		{
+			if (sqlite3_column_count (pStmt) != 6)
+				throw PackageDBException ("Invalid column gound in get_reduced_package");
+
+			pkg = make_shared<PackageMetaData> (
+					(const char*) sqlite3_column_text (pStmt, 0),
+					sqlite3_column_int (pStmt, 1),
+					VersionNumber ((const char*) sqlite3_column_text (pStmt, 2)),
+					VersionNumber ((const char*) sqlite3_column_text (pStmt, 3)),
+					(char) sqlite3_column_int (pStmt, 4),
+					sqlite3_column_int (pStmt, 5));
+		}
+		else if (err != SQLITE_DONE)
+		{
+			throw sqlitedb_exception (err, pDb);
+		}
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+
+	return pkg;
+}
+
+
 bool PackageDB::update_or_create_package (shared_ptr<PackageMetaData> mdata)
 {
 	sqlite3_stmt *pStmt = nullptr;
+	bool created;
 
 	try
 	{
@@ -739,7 +855,7 @@ bool PackageDB::update_or_create_package (shared_ptr<PackageMetaData> mdata)
 			sqlite3_finalize (pStmt);
 			pStmt = nullptr;
 
-			return true;
+			created = true;
 		}
 		else
 		{
@@ -783,7 +899,7 @@ bool PackageDB::update_or_create_package (shared_ptr<PackageMetaData> mdata)
 			sqlite3_finalize (pStmt);
 			pStmt = nullptr;
 
-			return false;
+			created = false;
 		}
 	}
 	catch (...)
@@ -793,6 +909,11 @@ bool PackageDB::update_or_create_package (shared_ptr<PackageMetaData> mdata)
 
 		throw;
 	}
+
+	set_interested_triggers (mdata);
+	set_activating_triggers (mdata);
+
+	return created;
 }
 
 
@@ -1408,6 +1529,178 @@ vector<string> PackageDB::get_config_files(shared_ptr<PackageMetaData> mdata)
 }
 
 
+void PackageDB::set_interested_triggers (shared_ptr<PackageMetaData> mdata)
+{
+	sqlite3_stmt *pStmt = nullptr;
+	const string& version_string = mdata->version.to_string();
+
+	if (!mdata->interested_triggers)
+	{
+		throw PackageDBException ("set_interested_triggers called with a mdata "
+				"without an interested triggers list.");
+	}
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"delete from triggers_interest "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step  (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
+		for (const auto& trigger : *mdata->interested_triggers)
+		{
+			err = sqlite3_prepare_v2 (pDb,
+					"insert into triggers_interest "
+					"(pkg_name, pkg_architecture, pkg_version, trigger) "
+					"values (?1, ?2, ?3, ?4);",
+					-1, &pStmt, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 4, trigger.c_str(), trigger.size(), SQLITE_TRANSIENT);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_step (pStmt);
+			if (err != SQLITE_DONE)
+				throw sqlitedb_exception (err, pDb);
+
+			sqlite3_finalize (pStmt);
+			pStmt = nullptr;
+		}
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
+void PackageDB::set_activating_triggers (shared_ptr<PackageMetaData> mdata)
+{
+	sqlite3_stmt *pStmt = nullptr;
+	const string& version_string = mdata->version.to_string();
+
+	if (!mdata->activated_triggers)
+	{
+		throw PackageDBException ("set_activating_triggers called with a mdata "
+				"without an activated triggers list.");
+	}
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"delete from triggers_activate "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step  (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
+		for (const auto& trigger : *mdata->activated_triggers)
+		{
+			err = sqlite3_prepare_v2 (pDb,
+					"insert into triggers_activate "
+					"(pkg_name, pkg_architecture, pkg_version, trigger) "
+					"values (?1, ?2, ?3, ?4);",
+					-1, &pStmt, nullptr);
+
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_bind_text (pStmt, 4, trigger.c_str(), trigger.size(), SQLITE_TRANSIENT);
+			if (err != SQLITE_OK)
+				throw sqlitedb_exception (err, pDb);
+
+			err = sqlite3_step (pStmt);
+			if (err != SQLITE_DONE)
+				throw sqlitedb_exception (err, pDb);
+
+			sqlite3_finalize (pStmt);
+			pStmt = nullptr;
+		}
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
 void PackageDB::delete_package (shared_ptr<PackageMetaData> mdata)
 {
 	sqlite3_stmt *pStmt = nullptr;
@@ -1531,6 +1824,62 @@ void PackageDB::delete_package (shared_ptr<PackageMetaData> mdata)
 		pStmt = nullptr;
 
 
+		/* Delete refrences to triggers */
+		err = sqlite3_prepare_v2 (pDb,
+				"delete from triggers_activate "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+		err = sqlite3_prepare_v2 (pDb,
+				"delete from triggers_interest "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+
+
 		/* Finally delete the package's main tuple. */
 		err = sqlite3_prepare_v2 (pDb,
 				"delete from packages "
@@ -1549,6 +1898,261 @@ void PackageDB::delete_package (shared_ptr<PackageMetaData> mdata)
 			throw sqlitedb_exception (err, pDb);
 
 		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
+void PackageDB::ensure_activating_triggers_read (shared_ptr<PackageMetaData> mdata)
+{
+	/* Only read activating triggers if they are not present yet */
+	if (mdata->activated_triggers)
+		return;
+
+	vector<string> triggers;
+	sqlite3_stmt *pStmt = nullptr;
+
+	const std::string& version_string = mdata->version.to_string();
+
+	try
+	{
+		mdata->activated_triggers.emplace();
+
+		auto err = sqlite3_prepare_v2 (pDb,
+				"select trigger from triggers_activate "
+				"where pkg_name = ?1 and pkg_architecture = ?2 and pkg_version = ?3;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, mdata->name.c_str(), mdata->name.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_int (pStmt, 2, mdata->architecture);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 3, version_string.c_str(), version_string.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+
+		for (;;)
+		{
+			err = sqlite3_step (pStmt);
+
+			if (err == SQLITE_DONE)
+			{
+				break;
+			}
+			else if (err != SQLITE_ROW)
+			{
+				throw sqlitedb_exception (err, pDb);
+			}
+			else
+			{
+				if (sqlite3_column_count (pStmt) != 1)
+					throw PackageDBException ("Invalid column count while reading activating triggers.");
+
+				mdata->activated_triggers->emplace_back ((const char*) sqlite3_column_text (pStmt, 0));
+			}
+		}
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		/* Transactionality */
+		mdata->activated_triggers = nullopt;
+
+		throw;
+	}
+}
+
+
+void PackageDB::activate_trigger(const string& trigger)
+{
+	sqlite3_stmt *pStmt = nullptr;
+
+	try
+	{
+		int err = sqlite3_prepare_v2 (pDb,
+				"insert into triggers_activated "
+				"(trigger) values (?1) "
+				"on conflict do nothing;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, trigger.c_str(), trigger.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_step (pStmt);
+		if (err != SQLITE_DONE)
+			throw sqlitedb_exception (err, pDb);
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+}
+
+
+vector<string> PackageDB::get_activated_triggers ()
+{
+	vector<string> triggers;
+	sqlite3_stmt *pStmt = nullptr;
+
+	try
+	{
+		int err = sqlite3_prepare_v2 (pDb,
+				"select trigger from triggers_activated;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		for (;;)
+		{
+			err = sqlite3_step (pStmt);
+
+			if (err == SQLITE_DONE)
+			{
+				break;
+			}
+			else if (err != SQLITE_ROW)
+			{
+				throw sqlitedb_exception (err, pDb);
+			}
+			else
+			{
+				if (sqlite3_column_count (pStmt) != 1)
+					throw PackageDBException ("Invalid column count while reading activated triggers.");
+
+				triggers.emplace_back ((const char*) sqlite3_column_text (pStmt, 0));
+			}
+		}
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+
+	return triggers;
+}
+
+
+vector<tuple<string, int, VersionNumber>> PackageDB::find_packages_interested_in_trigger (
+		const string& trigger)
+{
+	vector<tuple<string, int, VersionNumber>> pkgs;
+	sqlite3_stmt *pStmt = nullptr;
+
+	try
+	{
+		int err = sqlite3_prepare_v2 (pDb,
+				"select pkg_name, pkg_architecture, pkg_version "
+				"from triggers_interest "
+				"where trigger = ?1;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, trigger.c_str(), trigger.size(), SQLITE_STATIC);
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		for (;;)
+		{
+			err = sqlite3_step (pStmt);
+
+			if (err == SQLITE_DONE)
+			{
+				break;
+			}
+			else if (err != SQLITE_ROW)
+			{
+				throw sqlitedb_exception (err, pDb);
+			}
+			else
+			{
+				if (sqlite3_column_count (pStmt) != 3)
+					throw PackageDBException (
+							"Invalid column count while finding packages interested in a trigger.");
+
+				pkgs.emplace_back (
+						(const char*) sqlite3_column_text (pStmt, 0),
+						sqlite3_column_int (pStmt, 1),
+						VersionNumber ((const char*) sqlite3_column_text (pStmt, 2)));
+			}
+		}
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+
+	return pkgs;
+}
+
+
+void PackageDB::clear_trigger (const string& trigger)
+{
+	sqlite3_stmt *pStmt = nullptr;
+
+	try
+	{
+		int err = sqlite3_prepare_v2 (pDb,
+				"delete from triggers_activated "
+				"where trigger = ?1;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+		err = sqlite3_bind_text (pStmt, 1, trigger.c_str(), trigger.size(), SQLITE_STATIC);
 		if (err != SQLITE_OK)
 			throw sqlitedb_exception (err, pDb);
 

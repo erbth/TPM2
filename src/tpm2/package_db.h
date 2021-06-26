@@ -41,6 +41,10 @@ private:
 
 	sqlite3 *pDb = nullptr;
 
+	/* Internals for settings triggers */
+	void set_interested_triggers (std::shared_ptr<PackageMetaData> mdata);
+	void set_activating_triggers (std::shared_ptr<PackageMetaData> mdata);
+
 public:
 	/* This may create a new database if none is already present together with
 	 * the directory it resides in. It does not applay specific permissions on
@@ -50,12 +54,28 @@ public:
 	~PackageDB();
 
 
+	/* Do not read triggers. The functions will create PackageMetaData objects
+	 * each time they're called, hence pay attention when calling them multiple
+	 * timea as that may break with the
+	 * PackageMetaData-pointer-uniquely-identifies-package scheme. */
 	std::vector<std::shared_ptr<PackageMetaData>> get_packages_in_state(const int state);
 
-	/* This updates or creates only the tuple in the packages relation, that is
+	/* Fetches only name, architecture, version, source_version,
+	 * installation_reason and state. (pre-) dependencies will be left empty,
+	 * references to triggers won't be set.
+	 * Returns nullptr in case the package could not be found. */
+	std::shared_ptr<PackageMetaData> get_reduced_package(
+			const std::string& name,
+			const int architecture,
+			const VersionNumber& version);
+
+	/* This updates or creates only tuple in the packages relation, that is
 	 * name, architecture, version, source version, state and installation
-	 * reason. @returns true if the tuple was created, false if it was only
-	 * updated. */
+	 * reason, and the references to triggers the package is interested in and
+	 * which it activates. Therefore, mdata must have both trigger lists
+	 * populated, otherwise an exception will the thrown.
+	 *
+	 * @returns true if the tuple was created, false if it was only updated. */
 	bool update_or_create_package (std::shared_ptr<PackageMetaData> mdata);
 
 	void update_state (std::shared_ptr<PackageMetaData> mdata);
@@ -80,6 +100,20 @@ public:
 			std::shared_ptr<std::vector<std::string>> files);
 
 	std::vector<std::string> get_config_files (std::shared_ptr<PackageMetaData> mdata);
+
+
+	/* Triggers */
+	/* Only reads the triggers if they are not present. */
+	void ensure_activating_triggers_read (std::shared_ptr<PackageMetaData> mdata);
+
+	void activate_trigger (const std::string& trigger);
+	std::vector<std::string> get_activated_triggers ();
+
+	std::vector<std::tuple<std::string, int, VersionNumber>>
+		find_packages_interested_in_trigger (const std::string& trigger);
+
+	/* Remove a trigger from the list of activated triggers */
+	void clear_trigger (const std::string& trigger);
 
 
 	/* Delete a package version and all associated tuples. Does a lot, so it's

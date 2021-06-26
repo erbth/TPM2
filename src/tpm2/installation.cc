@@ -881,7 +881,7 @@ bool install_packages(shared_ptr<Parameters> params)
 		printf ("Not configuring packages because the target is not native.\n");
 	}
 
-	return true;
+	return execute_triggers (params, pkgdb);
 }
 
 
@@ -1237,6 +1237,8 @@ bool ll_configure_package (
 				run_script (params, *configure);
 		}
 
+		activate_package_triggers (params, pkgdb, mdata);
+
 
 		mdata->state = PKG_STATE_CONFIGURED;
 		pkgdb.update_state (mdata);
@@ -1523,7 +1525,10 @@ bool remove_packages (std::shared_ptr<Parameters> params, bool autoremove)
 	}
 
 	/* High-level remove the packages in the removal graph. */
-	return hl_remove_packages (params, pkgdb, installed_packages, g);
+	if (!hl_remove_packages (params, pkgdb, installed_packages, g))
+		return false;
+
+	return execute_triggers (params, pkgdb);
 }
 
 
@@ -1689,6 +1694,8 @@ bool ll_unconfigure_package (
 			else
 				run_script (params, *unconfigure);
 		}
+
+		activate_package_triggers (params, pkgdb, mdata);
 
 
 		mdata->state = change ? PKG_STATE_WAIT_NEW_UNPACKED : PKG_STATE_RM_FILES_BEGIN;
@@ -1877,6 +1884,8 @@ bool ll_rm_files (
 				}
 			}
 		}
+
+		activate_package_triggers (params, pkgdb, mdata);
 
 
 		mdata->state = change ? PKG_STATE_POSTRM_CHANGE : PKG_STATE_POSTRM_BEGIN;
@@ -2073,4 +2082,81 @@ bool config_file_differs (shared_ptr<Parameters> params, const PackageDBFileEntr
 	}
 
 	return false;
+}
+
+
+/******************************** Triggers ************************************/
+void activate_package_triggers (shared_ptr<Parameters> params, PackageDB& pkgdb,
+		shared_ptr<PackageMetaData> mdata)
+{
+	pkgdb.ensure_activating_triggers_read (mdata);
+	for (const auto& trg : *mdata->activated_triggers)
+	{
+		pkgdb.activate_trigger (trg);
+		printf_verbose (params, "\n  Activated trigger `%s'.", trg.c_str());
+	}
+}
+
+
+bool execute_triggers (shared_ptr<Parameters> params, PackageDB& pkgdb)
+{
+	std::map<tuple<string, int, VersionNumber>, optional<StoredMaintainerScripts>> cache;
+
+	for (const auto& trg : pkgdb.get_activated_triggers ())
+	{
+		printf ("Executing trigger %s.\n", trg.c_str());
+
+		/* Find packages interested in this trigger and run their configure
+		 * scripts. */
+		for (const auto& t : pkgdb.find_packages_interested_in_trigger(trg))
+		{
+			const auto& [name, arch, version] = t;
+
+			auto ipkg = cache.find (t);
+			if (ipkg == cache.end())
+			{
+				auto pkg = pkgdb.get_reduced_package(name, arch, version);
+				if (!pkg)
+				{
+					fprintf (stderr, "WARNING: Package %s@%s:%s is interested in "
+							"triggers but not in the db.\n",
+							name.c_str(),
+							Architecture::to_string(arch).c_str(),
+							version.to_string().c_str());
+				}
+
+				if (pkg && pkg->state != PKG_STATE_CONFIGURED)
+				{
+					fprintf (stderr, "WARNING: Package %s@%s:%s is interested in "
+							"triggers but not configured. Triggers will not be run for it.\n",
+							name.c_str(),
+							Architecture::to_string(arch).c_str(),
+							version.to_string().c_str());
+
+					pkg = nullptr;
+				}
+
+				cache.emplace (make_pair(t, StoredMaintainerScripts(params, pkg)));
+				ipkg = cache.find (t);
+			}
+
+			if (ipkg->second)
+			{
+				auto configure = ipkg->second->get_configure();
+				if (configure)
+				{
+					printf_verbose(params, "  Triggering %s@%s:%s...\n",
+							name.c_str(), Architecture::to_string(arch).c_str(),
+							version.to_string().c_str());
+
+					run_script (params, *configure, "triggered", trg.c_str());
+				}
+			}
+		}
+
+		/* Clear the trigger */
+		pkgdb.clear_trigger (trg);
+	}
+
+	return true;
 }

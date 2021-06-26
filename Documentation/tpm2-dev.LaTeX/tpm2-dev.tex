@@ -1,7 +1,7 @@
 % !TeX spellcheck = en_US
 \documentclass[a4paper]{scrartcl}
 \usepackage[left=2cm, right=2cm, top=2cm, bottom=2cm]{geometry}
-\usepackage{lmodern}
+\usepackage{sectsty}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[english]{babel}
@@ -15,6 +15,14 @@
 \usepackage{tikz}
 \usetikzlibrary{automata, positioning, arrows, shapes.geometric}
 
+\usepackage{xcolor}
+\usepackage{scrhack}
+\usepackage{listings}
+
+\usepackage{tcolorbox}
+
+\allsectionsfont{\sffamily}
+
 \newcommand{\file}[1]{\texttt{#1}}
 \newcommand{\program}[1]{\textbf{#1}}
 \newcommand{\variable}[1]{'\texttt{#1}'}
@@ -22,6 +30,10 @@
 \newcommand{\script}[1]{\texttt{#1}}
 
 \newcommand{\green}[1]{\textcolor{green}{#1}}
+
+\newenvironment{notebox}
+	{\begin{tcolorbox}\textsf{\textbf{Note:}}\\}
+	{\end{tcolorbox}}
 
 \title{Version 2 of the TSClient LEGACY Package Manager}
 \subtitle{Developer's documentation}
@@ -129,25 +141,37 @@
 	\section{PackageDB}
 	\label{sec:packagedb}
 	
-	''\module{PackageDB}'' or ''\module{package\_db}'' is the package manager's database, which stores the installed packages, their states and which files are installed. The latter is especially interesting since one has to decide which attributes of files to store. For now I decided to use the following simple schema:
+	''\module{PackageDB}'' or ''\module{package\_db}'' is the package manager's database, which stores the installed packages, their states and which files are installed. The latter is especially interesting since one has to decide which attributes of files to store. Currently PackageDB uses SQLite3 as DBMS and the following SQL relational schema (version 1.2):
 	
 	\begin{table}[H]
 		\centering
 		
 		{
 		\setlength{\extrarowheight}{0.5eM}
+		\sffamily
+		\hyphenchar\font=-1
 		\begin{tabularx}{\textwidth}{lX}
 			schema\_version: & \underline{version:varchar} \\
-			packages: & \underline{name:varchar}, \underline{arch:integer}, \underline{version:varchar}, source\_version:varchar, installation\_reason:integer, state:integer \\
+			packages: & \underline{name:varchar}, \underline{architecture:integer}, \underline{version:varchar}, source\_version:varchar, installation\_reason:integer, state:integer \\
 			
-			files: & \underline{path:varchar}, \underline{pkg\_name:varchar}, \underline{pkg\_arch}, \underline{version:varchar}, type:integer, digest:varchar \\
+			files: & \underline{path:varchar}, \underline{pkg\_name:varchar}, \underline{pkg\_architecture:integer}, \underline{version:varchar}, type:integer, digest:varchar \\
 			
-			config\_files: & \underline{path:varchar}, \underline{pkg\_name:varchar}, \underline{pkg\_arch}, \underline{version:varchar} \\
+			config\_files: & \underline{path:varchar}, \underline{pkg\_name:varchar}, \underline{pkg\_architecture:integer}, \underline{version:varchar} \\
 			
 			pre\_dependencies: & \underline{pkg\_name:varchar}, \underline{pkg\_architecture:integer}, \underline{pkg\_version:varchar}, \underline{name:varchar}, \underline{architecture:integer}, constraints:varchar \\
 			dependencies: & \underline{pkg\_name:varchar}, \underline{pkg\_architecture:integer}, \underline{pkg\_version:varchar}, \underline{name:varchar}, \underline{architecture:integer}, constraints:varchar \\
+			
+			triggers\_activate & \underline{pkg\_name:varchar}, \underline{pkg\_architecture:integer}, \underline{version:varchar}, \underline{trigger:varchar} \\
+			triggers\_interest & \underline{pkg\_name:varchar}, \underline{pkg\_architecture:integer}, \underline{version:varchar}, \underline{trigger:varchar} \\
+			
+			triggers\_activated & \underline{trigger:varchar} \\
 		\end{tabularx}
 		}
+	
+		\vspace{0.5eM}
+		\begin{flushleft}
+			\textsf{triggers\_interest} has a non-unique index on \textsf{trigger}.
+		\end{flushleft}
 	
 		\vspace{1eM}
 		The type of files maybe one out of:
@@ -165,7 +189,7 @@
 			0x06 & Pipe \\
 		\end{tabular}
 	
-		\caption{The database schema of \module{PackageDB}}
+		\caption{Version 1.2 of \module{PackageDB}'s database schema}
 		\label{tab:the_database_schema_of_packagedb}
 	\end{table}
 	
@@ -189,6 +213,28 @@
 		\item[auto] The package was installed because other packages depend on it.
 		\item[manual] The package was installed because the user wants it.
 	\end{description}
+
+
+	\section{Triggers}
+	\label{sec:triggers}
+	
+	Triggers allow to run procedures required by many packages only once at the end of the package manager's execution. TPM2's trigger-concept is inspired by dpkg's. Note that RPM has triggers, too, but follows a different concept.
+	
+	In TPM2 triggers exist beneath packages. They can be activated and will be executed at the end of \program{tpm2}'s run. Triggers are always triggered by a package when it changes state, therefore Packages can declare in their metadata to activate triggers (see \ref{fig:the_format_of_desc_xml}). A specified trigger will be activated after the package has been configured, unconfigured or its files have been removed. TPM2 collects all triggers activated during a run in the database (s.t. it can be aborted and will not loose triggers) and executes them right before exiting successfully.
+	
+	Packages can declare interest in triggers in their metadata to have their \texttt{configure} script called when triggers are executed:
+	
+	\begin{lstlisting}[language=bash]
+		configure triggered <trigger name>
+	\end{lstlisting}
+	
+	\texttt{configure} will be called once at the end of the run for every activated trigger the package declares interest in, however note that a trigger may be activated after unconfiguring a package and removing its files, therefore \texttt{configure} could be called multiple times if TPM2 is interrupted. Hence the actions a triggered package performs must be idempotent.
+	
+	Apart from the list of activated triggers ('activated' is used as a synonym for 'triggered' here), PackageDB must also store the triggers a package is interested in and which it activates. The former must support an efficient lookup of packages interested in a particular trigger s.t. executing the trigger is cheap.
+	
+	\begin{notebox}
+		A package can trigger itself. If it is interested in a trigger which it activates as well, it will be triggered at the end of \program{tpm2}'s run.
+	\end{notebox}
 	
 	
 	\section{Package states}
@@ -456,11 +502,14 @@
 			.4 <sconstr> \DTcomment{source version constraint}.
 			.2 <dependencies>.
 			.3 $\vdots$.
+			.2 <triggers>.
+			.3 <activate> \DTcomment{activate this trigger; can be used zero or more times}.
+			.3 <interested> \DTcomment{declare interest in this trigger; can be used zero of more times}.
 		}
 	
 		\vspace{1eM}
 	
-		The first four parameters (''sections'' in XML jargon) must come first to ease reading the file. For dependencies, the \texttt{name} and \texttt{arch} sections must come first.
+		The first four parameters (''sections'' in XML jargon) must come first to ease reading the file. For dependencies, the \texttt{name} and \texttt{arch} sections must come first. \texttt{pre-dependencies}, \texttt{dependencies} and \texttt{triggers} are optional (default to empty) but should be generated by \program{tpm2\_pack}.
 		
 		\caption{The format of \file{desc.xml}}
 		\label{fig:the_format_of_desc_xml}

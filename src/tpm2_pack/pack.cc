@@ -137,6 +137,20 @@ bool pack (const string& _dir)
 				Architecture::to_string(d.get_architecture()).c_str());
 	}
 
+	if (!mdata->activated_triggers->empty())
+	{
+		printf ("\n    Activated triggers:\n");
+		for (const auto& trg : *mdata->activated_triggers)
+			printf ("      %s\n", trg.c_str());
+	}
+
+	if (!mdata->interested_triggers->empty())
+	{
+		printf ("\n    Interested in triggers:\n");
+		for (const auto& trg : *mdata->interested_triggers)
+			printf ("      %s\n", trg.c_str());
+	}
+
 	printf ("\n");
 
 

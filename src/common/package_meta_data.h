@@ -10,6 +10,8 @@
 #include <exception>
 #include <memory>
 #include <string>
+#include <vector>
+#include <optional>
 #include <tinyxml2.h>
 #include "architecture.h"
 #include "dependencies.h"
@@ -73,6 +75,9 @@ struct PackageMetaData
 	char installation_reason;
 	int state;
 
+	std::optional<std::vector<std::string>> interested_triggers;
+	std::optional<std::vector<std::string>> activated_triggers;
+
 
 	/* Private data to use by algorithms etc. Must not be relied on to be
 	 * present after the function that uses them exits, however it is not
@@ -91,7 +96,8 @@ struct PackageMetaData
 	void add_dependency(const Dependency&);
 
 
-	/* Generate an XML DOM Document from it */
+	/* Generate an XML DOM Document from it.
+	 * Requires that trigger lists are set. */
 	std::unique_ptr<tinyxml2::XMLDocument> to_xml() const;
 };
 

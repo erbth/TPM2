@@ -138,4 +138,12 @@ bool ll_run_postrm (
 /*************************** Config file handling *****************************/
 bool config_file_differs (std::shared_ptr<Parameters> params, const PackageDBFileEntry& file);
 
+
+/******************************** Triggers ************************************/
+void activate_package_triggers (std::shared_ptr<Parameters> params, PackageDB& pkgdb,
+		std::shared_ptr<PackageMetaData> mdata);
+
+/* Execute activated triggers. @returns true if successful */
+bool execute_triggers (std::shared_ptr<Parameters> params, PackageDB& pkgdb);
+
 #endif /* __INSTALLATION_H */

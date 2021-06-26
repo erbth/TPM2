@@ -1,9 +1,8 @@
 #include <cstring>
-#include <optional>
-#include <tinyxml2.h>
 #include <stdexcept>
 #include "package_meta_data.h"
 #include "managed_buffer.h"
+#include "common_utilities.h"
 
 using namespace std;
 using namespace tinyxml2;
@@ -123,6 +122,39 @@ unique_ptr<XMLDocument> PackageMetaData::to_xml() const
 			d.version_formula->to_xml (doc.get(), dep);
 	}
 
+
+	/* Triggers */
+	XMLElement *triggers = doc->NewElement ("triggers");
+	ln = root->InsertAfterChild (ln, triggers);
+
+	if (!interested_triggers || !activated_triggers)
+	{
+		throw gp_exception ("PackageMetaData::to_xml called without both "
+				"metadata lists being present.");
+	}
+
+	ln2 = nullptr;
+	for (const auto& t : *interested_triggers)
+	{
+		XMLElement *trigger = doc->NewElement ("interested");
+		trigger->SetText (t.c_str());
+
+		if (!ln2)
+			ln2 = triggers->InsertFirstChild (trigger);
+		else
+			ln2 = triggers->InsertAfterChild (ln2, trigger);
+	}
+
+	for (const auto& t : *activated_triggers)
+	{
+		XMLElement *trigger = doc->NewElement ("activate");
+		trigger->SetText (t.c_str());
+
+		if (!ln2)
+			ln2 = triggers->InsertFirstChild (trigger);
+		else
+			ln2 = triggers->InsertAfterChild (ln2, trigger);
+	}
 
 	return doc;
 }
@@ -464,7 +496,7 @@ shared_ptr<PackageMetaData> read_package_meta_data_from_xml (
 				else
 				{
 					throw invalid_package_meta_data_xml (
-							"Invalid section \"" + string(n) + "\" in section "
+							"Invalid section \"" + string(n2) + "\" in section "
 							"dependencies or pre-dependencies on line " + to_string(cdep->GetLineNum()));
 				}
 
@@ -473,6 +505,50 @@ shared_ptr<PackageMetaData> read_package_meta_data_from_xml (
 					cdep = cdep->NextSiblingElement();
 				else
 					cdep = nullptr;
+			}
+		}
+		else if (strcmp (n, "triggers") == 0)
+		{
+			if (!mdata)
+				throw invalid_package_meta_data_xml ("triggers section before first four attributes");
+
+			/* Parse subsection */
+			XMLElement *ctrg = ce->FirstChildElement();
+
+			while (ctrg)
+			{
+				const char *n2 = ctrg->Name();
+
+				bool interested = false;
+				if (strcmp (n2, "interested") == 0)
+				{
+					interested = true;
+				}
+				else if (strcmp (n2, "activate") != 0)
+				{
+					throw invalid_package_meta_data_xml (
+							"Invalid section \"" + string(n2) + "\" in section "
+							"triggers on  line " + to_string (ctrg->GetLineNum()));
+				}
+
+				const char *trg_name = ctrg->GetText();
+				if (!trg_name || strlen (trg_name) == 0)
+				{
+					throw invalid_package_meta_data_xml (
+							"Invalid trigger name on line " +
+							to_string (ctrg->GetLineNum()));
+				}
+
+				if (interested)
+					mdata->interested_triggers->emplace_back (trg_name);
+				else
+					mdata->activated_triggers->emplace_back (trg_name);
+
+				/* Next trigger reference */
+				if (ctrg != ce->LastChildElement())
+					ctrg = ctrg->NextSiblingElement();
+				else
+					ctrg = nullptr;
 			}
 		}
 		else
@@ -488,6 +564,11 @@ shared_ptr<PackageMetaData> read_package_meta_data_from_xml (
 			mdata = make_shared<PackageMetaData> (string(name), architecture,
 					version.value(), source_version.value(),
 					INSTALLATION_REASON_INVALID, PKG_STATE_INVALID);
+
+			/* The triggers will be read (or determined that the package
+			 * references none). */
+			mdata->interested_triggers.emplace();
+			mdata->activated_triggers.emplace();
 		}
 
 		/* Next child */
