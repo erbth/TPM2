@@ -403,14 +403,30 @@ bool install_packages(shared_ptr<Parameters> params)
 			}
 		}
 
-		if (!to_remove.empty())
-		{
-			printf ("These packages will be removed:\n");
-			for (auto& p : to_remove)
-				printf ("  %s@%s\n", p.first.c_str(), Architecture::to_string (p.second).c_str());
+		/* Some packages' old version will be replaced by multiple new package
+		 * versions including a new version of itself. Hence the new version
+		 * will be CHANGE_INSTALLed and the old version be REPLACE_REMOVEd.
+		 * Similar situation can happen with REPLACE_INSTALL. As this is only
+		 * for user information, only list these packages under 'change'. */
 
-			printf ("\n");
+		bool have_pkgs = false;
+		for (auto& p : to_remove)
+		{
+			if (to_change.find(p) != to_change.end())
+				continue;
+
+			if (!have_pkgs)
+			{
+				printf ("These packages will be removed:\n");
+				have_pkgs = true;
+			}
+
+			printf ("  %s@%s\n", p.first.c_str(), Architecture::to_string (p.second).c_str());
 		}
+
+		if (have_pkgs)
+			printf ("\n");
+
 
 		if (!to_change.empty())
 		{
@@ -421,14 +437,25 @@ bool install_packages(shared_ptr<Parameters> params)
 			printf ("\n");
 		}
 
-		if (!to_install.empty())
-		{
-			printf ("These packages will be installed:\n");
-			for (auto& p : to_install)
-				printf ("  %s@%s\n", p.first.c_str(), Architecture::to_string (p.second).c_str());
 
-			printf ("\n");
+		have_pkgs = false;
+		for (auto& p : to_install)
+		{
+			if (to_change.find(p) != to_change.end())
+				continue;
+
+			if (!have_pkgs)
+			{
+				printf ("These packages will be installed:\n");
+				have_pkgs = true;
+			}
+
+			printf ("  %s@%s\n", p.first.c_str(), Architecture::to_string (p.second).c_str());
 		}
+
+		if (have_pkgs)
+			printf ("\n");
+
 
 		if (!params->assume_yes)
 		{
@@ -2100,9 +2127,19 @@ void activate_package_triggers (shared_ptr<Parameters> params, PackageDB& pkgdb,
 
 bool execute_triggers (shared_ptr<Parameters> params, PackageDB& pkgdb)
 {
+	auto trgs = pkgdb.get_activated_triggers ();
+	if (trgs.empty())
+		return true;
+
+	if (!params->target_is_native())
+	{
+		printf ("Not executing triggers because the target is not native.\n");
+		return true;
+	}
+
 	std::map<tuple<string, int, VersionNumber>, optional<StoredMaintainerScripts>> cache;
 
-	for (const auto& trg : pkgdb.get_activated_triggers ())
+	for (const auto& trg : trgs)
 	{
 		printf ("Executing trigger %s.\n", trg.c_str());
 
