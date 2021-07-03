@@ -1,0 +1,25 @@
+Source: tpm2
+Section: admin
+Priority: optional
+Maintainer: Thomas Erbesdobler <t.erbesdobler@gmx.de>
+Build-Depends:
+ debhelper (>= 11),
+ cmake (>= 3.13),
+ libsqlite3-dev,
+ libtinyxml2-dev,
+ zlib1g-dev
+Standards-Version: 4.1.3
+Vcs-Git: https://github.com/erbth/tpm2.git
+
+Package: tpm2
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, tar (>= 1.27)
+Description: The Version 2 of the TSClient LEGACY Package Manager
+ This package contains the package manager.
+
+Package: tpm2-pack
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, tar (>= 1.27)
+Recommends: tpm2
+Description: The Version 2 of the TSClient LEGACY Package Manager
+ This package contains tpm2_pack, the tool used to create packages.
