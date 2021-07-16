@@ -8,6 +8,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <optional>
 #include <utility>
 #include "version_number.h"
 
