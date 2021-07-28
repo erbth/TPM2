@@ -1,5 +1,6 @@
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <cstdarg>
 #include <regex>
@@ -73,6 +74,14 @@ void run_script (std::shared_ptr<Parameters> params, ManagedBuffer<char>& script
 	if (pid == 0)
 	{
 		/* In the child */
+		/* Set environment_variables */
+		if (setenv ("TPM_TARGET", params->target.c_str(), 1) < 0)
+		{
+			fprintf (stderr, "Failed to set environment variable: %s\n", strerror (errno));
+			exit (1);
+		}
+
+		/* Execute the script */
 		if (!arg1)
 			execl (tmp_script.c_str(), tmp_script.filename().c_str(), nullptr);
 		else if (!arg2)

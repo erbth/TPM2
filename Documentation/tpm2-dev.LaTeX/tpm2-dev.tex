@@ -1,6 +1,7 @@
 % !TeX spellcheck = en_US
 \documentclass[a4paper]{scrartcl}
 \usepackage[left=2cm, right=2cm, top=2cm, bottom=2cm]{geometry}
+\usepackage{lmodern}
 \usepackage{sectsty}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
@@ -472,6 +473,8 @@
 	
 	A config file for which the digest is known (currently all config files) will only be overwritten / deleted during unpacking an archive if it was not changed or deleted. It is considered changed if its digest or type changed. Only links and regular files can be considered config files, and replacing a link with a config file or vice versa means a change in this sense. However the TPM2 does not store if a config file was recognized as changed at some point, hence if the new version matches the one on the system, the latter won't be overwritten but for future operations considered as unchanged as if it was installed by the package.
 	
+	By default \program{tpm2\_pack} will add all files under \file{/etc} as config files. However a file \file{config\_file\_patterns} can be added in the unpacked form's root, which contains one ECMAScript-like regular expression (interpreted by C++ 11's \texttt{std::regex}) per line against which the entire paths of the package's files will be matched. If a file matches one of the regular expressions, it is added as a config file.
+	
 	
 	\section{different forms of packages}
 	\label{sec:differnt_forms_of_packages}
@@ -655,6 +658,14 @@
 	\label{sec:installation_reasons}
 	
 	There are two reasons to install a package: (a) because the user wanted it (manual) and (b) because another package depends on it (and the user did not explicitly install it, automatic). So, when shall a package be set to manual? -- Whenever the user specifies it on install. For upgrading there'll be \texttt{-{}-upgrade} ...
+	
+	
+	\section{Maintainer scripts}
+	\label{sec:maintainer_scripts}
+	
+	There currently exist four types of maintainer scripts, and each package can have at least on of each type. They are called \script{preinst}, \script{configure}, \script{unconfigure}, and \script{postrm}. \script{configure} and \script{unconfigure} are only run when the target is native. Because \script{preinst} and \script{postrm} are run before a package's files are unpacked or after they have been removed, respectively, they need to function without a native target. Actually this is only true for \script{preinst}, because a package may freely choose to not be removable in a non-native target. More precisely a package may choose to be not installable into non-native targets as well, however basic packages required to bootstrap a system must not, of course.
+	
+	Therefore \script{preinst} and \script{postrm} receive an environment variable \texttt{TPM\_TARGET} which contains the current target directory, or '\texttt{/}' if the target is native. It may contain a trailing slash. Actually all four configure scripts receive the environment variable, but it will always be \texttt{/} for \script{configure} and \script{unconfigure}.
 
 
 

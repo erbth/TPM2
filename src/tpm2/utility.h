@@ -20,6 +20,9 @@ void print_target(std::shared_ptr<Parameters> params, bool to_stderr = false);
  * any executable, not only scripts. I just call it script referring to Debian's
  * maintainer scripts.
  *
+ * Before running exec, this function sets the environment variable TPM_TARGET
+ * to params->target.
+ *
  * Be warned that this does not close fds before exec. Use CLOEXEC for this. */
 void run_script (std::shared_ptr<Parameters> params, ManagedBuffer<char>& script,
 		const char *arg1 = nullptr, const char *arg2 = nullptr);

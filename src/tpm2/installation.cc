@@ -926,120 +926,123 @@ bool ll_run_preinst (
 				(change && mdata->state == PKG_STATE_PREINST_CHANGE)))
 		throw gp_exception ("ll_run_preinst called with pkg in inacceptable state.");
 
-	/* Look for existing files and eventually adopt them */
-	printf_verbose_flush (params, "  Looking for existing files ...");
-
-	try
+	if (mdata->state == PKG_STATE_WANTED)
 	{
-		auto files = pp->get_file_list();
-		auto config_files = pp->get_config_files();
+		/* Look for existing files and eventually adopt them */
+		printf_verbose_flush (params, "  Looking for existing files ...");
 
-		bool first = true;
-
-		for (const auto& file : *files)
+		try
 		{
-			stringstream ss;
+			auto files = pp->get_file_list();
+			auto config_files = pp->get_config_files();
 
-			/* Augment file trie if one is specified and skip the files from old
-			 * packages if change semantics are requested. */
-			if (current_trie)
+			bool first = true;
+
+			for (const auto& file : *files)
 			{
-				auto h = current_trie->find_directory (file.path);
+				stringstream ss;
 
-				if (!h)
+				/* Augment file trie if one is specified and skip the files from old
+				 * packages if change semantics are requested. */
+				if (current_trie)
 				{
-					current_trie->insert_directory (file.path);
-					h = current_trie->find_directory (file.path);
+					auto h = current_trie->find_directory (file.path);
+
+					if (!h)
+					{
+						current_trie->insert_directory (file.path);
+						h = current_trie->find_directory (file.path);
+					}
+
+					if (find (h->data.begin(), h->data.end(), mdata.get()) == h->data.end())
+						h->data.push_back (mdata.get());
+
+					/* Now this file will be registered for at least this package.
+					 * If it belongs to other packages as well, these must be old
+					 * packages (otherwise there would be a conflict). */
+					if (change && h->data.size() > 1)
+						continue;
 				}
 
-				if (find (h->data.begin(), h->data.end(), mdata.get()) == h->data.end())
-					h->data.push_back (mdata.get());
+				/* Adoption semantics */
+				if (!file.non_existent_or_matches (params->target, &ss))
+				{
+					/* Skip config files , since the config file logic will handle
+					 * them later. */
+					if (binary_search(config_files->begin(), config_files->end(), file.path))
+						continue;
 
-				/* Now this file will be registered for at least this package.
-				 * If it belongs to other packages as well, these must be old
-				 * packages (otherwise there would be a conflict). */
-				if (change && h->data.size() > 1)
-					continue;
+					if (first)
+					{
+						printf ("\n\n");
+						first = false;
+					}
+
+					printf ("File \"%s\" differs from the one in the package: %s",
+							file.path.c_str(), ss.str().c_str());
+
+					if (!params->adopt_all)
+					{
+						printf ("Adopt it anyway? ");
+
+						auto c = safe_query_user_input ("yN");
+						if (c != 'y')
+							throw gp_exception ("User aborted.");
+					}
+
+					printf ("Adopting \"%s\", which differs.\n", file.path.c_str());
+				}
 			}
 
-			/* Adoption semantics */
-			if (!file.non_existent_or_matches (params->target, &ss))
-			{
-				/* Skip config files , since the config file logic will handle
-				 * them later. */
-				if (binary_search(config_files->begin(), config_files->end(), file.path))
-					continue;
-
-				if (first)
-				{
-					printf ("\n\n");
-					first = false;
-				}
-
-				printf ("File \"%s\" differs from the one in the package: %s",
-						file.path.c_str(), ss.str().c_str());
-
-				if (!params->adopt_all)
-				{
-					printf ("Adopt it anyway? ");
-
-					auto c = safe_query_user_input ("yN");
-					if (c != 'y')
-						throw gp_exception ("User aborted.");
-				}
-
-				printf ("Adopting \"%s\", which differs.\n", file.path.c_str());
-			}
+			printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		}
+		catch (exception& e)
+		{
+			printf (COLOR_RED " failed" COLOR_NORMAL "\n");
+			printf ("%s\n", e.what());
+			return false;
 		}
 
-		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
-	}
-	catch (exception& e)
-	{
-		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
-		printf ("%s\n", e.what());
-		return false;
-	}
 
+		/* Create DB tuples to make the operation transactional, store maintainer
+		 * scripts, and store the list of config files. */
+		printf_verbose_flush (params, "  Creating db tuples and storing maintainer scripts ...");
 
-	/* Create DB tuples to make the operation transactional, store maintainer
-	 * scripts, and store the list of config files. */
-	printf_verbose_flush (params, "  Creating db tuples and storing maintainer scripts ...");
+		try
+		{
+			pkgdb.begin();
 
-	try
-	{
-		pkgdb.begin();
+			mdata->state = change ? PKG_STATE_PREINST_CHANGE : PKG_STATE_PREINST_BEGIN;
 
-		mdata->state = change ? PKG_STATE_PREINST_CHANGE : PKG_STATE_PREINST_BEGIN;
+			pkgdb.update_or_create_package (mdata);
+			pkgdb.set_dependencies (mdata);
+			pkgdb.set_files (mdata, pp->get_file_list());
+			pkgdb.set_config_files (mdata, pp->get_config_files());
 
-		pkgdb.update_or_create_package (mdata);
-		pkgdb.set_dependencies (mdata);
-		pkgdb.set_files (mdata, pp->get_file_list());
-		pkgdb.set_config_files (mdata, pp->get_config_files());
+			StoredMaintainerScripts sms (params, mdata,
+					pp->get_preinst(),
+					pp->get_configure(),
+					pp->get_unconfigure(),
+					pp->get_postrm());
 
-		StoredMaintainerScripts sms (params, mdata,
-				pp->get_preinst(),
-				pp->get_configure(),
-				pp->get_unconfigure(),
-				pp->get_postrm());
+			sms.write();
 
-		sms.write();
+			pkgdb.commit();
 
-		pkgdb.commit();
-
-		printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
-	}
-	catch (exception& e)
-	{
-		pkgdb.rollback();
-		printf (COLOR_RED " failed" COLOR_NORMAL "\n");
-		printf ("%s\n", e.what());
-		return false;
-	}
-	catch (...)
-	{
-		pkgdb.rollback();
-		throw;
+			printf_verbose (params, COLOR_GREEN " OK" COLOR_NORMAL "\n");
+		}
+		catch (exception& e)
+		{
+			pkgdb.rollback();
+			printf (COLOR_RED " failed" COLOR_NORMAL "\n");
+			printf ("%s\n", e.what());
+			return false;
+		}
+		catch (...)
+		{
+			pkgdb.rollback();
+			throw;
+		}
 	}
 
 
