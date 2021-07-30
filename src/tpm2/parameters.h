@@ -25,7 +25,9 @@ enum operation_type {
 	OPERATION_INSTALLATION_GRAPH,
 	OPERATION_REVERSE_DEPENDENCIES,
 	OPERATION_MARK_MANUAL,
-	OPERATION_MARK_AUTO
+	OPERATION_MARK_AUTO,
+
+	OPERATION_CREATE_INDEX
 };
 
 
@@ -70,6 +72,13 @@ struct Parameters
 
 	/* Verbose output */
 	bool verbose = false;
+
+	/* Parameters for repository tools */
+	std::string create_index_repo;
+	std::string create_index_name = "index";
+
+	/* Key file name behind --sign */
+	std::string sign;
 
 	/* Methods */
 	bool target_is_native() const;

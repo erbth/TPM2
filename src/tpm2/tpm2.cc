@@ -12,6 +12,7 @@
 #include "package_db.h"
 #include "utility.h"
 #include "pkg_tools.h"
+#include "repo_tools.h"
 
 extern "C" {
 #include <sys/types.h>
@@ -101,7 +102,19 @@ void print_help()
 
 "  --mark-manual           Mark the specified packages as manually installed\n\n"
 
-"  --mark-auto             Mark the specified packages as automatically installed\n\n"
+"  --mark-auto             Mark the specified packages as automatically installed\n\n\n"
+
+
+"Repository tools:\n"
+"  --create-index <dir> [<name>]  Create indeces for a repository's\n"
+"                                 architectures. The root of the repository is\n"
+"                          given as <dir> and the index is named <name> if a\n"
+"                          name is given. If no name is given, the index is\n"
+"                          called 'index'. If an index with that name exists\n"
+"                          already, it is overwritten atomically.\n\n"
+
+"  --sign <key>            Sign the index with the given RSA key (must be in PEM\n"
+"                          format).\n\n"
 
 "  --help                  Display this list of options\n\n"
 
@@ -120,6 +133,9 @@ struct ParserState
 
 	char target = NOT_SPECIFIED;
 	char operation = NOT_SPECIFIED;
+	char create_index_repo = NOT_SPECIFIED;
+	char create_index_name = NOT_SPECIFIED;
+	char sign = NOT_SPECIFIED;
 };
 
 
@@ -149,6 +165,21 @@ int _main(int argc, char** argv)
 				printf("--target must be followed by a path.\n");
 				return 2;
 			}
+
+			if (state.create_index_repo == state.AWAITING)
+			{
+				printf("--create-index must be followed by a path.\n");
+				return 2;
+			}
+
+			if (state.sign == state.AWAITING)
+			{
+				printf("--sign must be followed by a path.\n");
+				return 2;
+			}
+
+			if (state.create_index_name == state.AWAITING)
+				state.create_index_name = state.NOT_SPECIFIED;
 
 			if (option == "version")
 			{
@@ -254,6 +285,28 @@ int _main(int argc, char** argv)
 				params->operation = OPERATION_MARK_AUTO;
 				state.operation = state.SPECIFIED;
 			}
+			else if (option == "create-index")
+			{
+				if (state.create_index_repo != state.NOT_SPECIFIED)
+				{
+					printf("--create-index may only be specified once.\n");
+					return 2;
+				}
+
+				params->operation = OPERATION_CREATE_INDEX;
+				state.operation = state.SPECIFIED;
+				state.create_index_repo = state.AWAITING;
+			}
+			else if (option == "sign")
+			{
+				if (state.sign != state.NOT_SPECIFIED)
+				{
+					printf("--sign may only be specified once.\n");
+					return 2;
+				}
+
+				state.sign = state.AWAITING;
+			}
 			else
 			{
 				printf("Invalid option --%s.\n", option.c_str());
@@ -266,6 +319,28 @@ int _main(int argc, char** argv)
 			{
 				params->target = get_absolute_path (parameter);
 				state.target = state.SPECIFIED;
+			}
+			else if (state.create_index_repo == state.AWAITING)
+			{
+				params->create_index_repo = parameter;
+				state.create_index_repo = state.SPECIFIED;
+				state.create_index_name = state.AWAITING;
+			}
+			else if (state.create_index_name == state.AWAITING)
+			{
+				if (parameter.size() < 1)
+				{
+					printf("The index name must not be empty.\n");
+					return 2;
+				}
+
+				params->create_index_name = parameter;
+				state.create_index_name = state.SPECIFIED;
+			}
+			else if (state.sign == state.AWAITING)
+			{
+				params->sign = parameter;
+				state.sign = state.SPECIFIED;
 			}
 			else
 			{
@@ -319,10 +394,35 @@ int _main(int argc, char** argv)
 		return 2;
 	}
 
+	if (state.create_index_repo == state.AWAITING)
+	{
+		printf("--create-index must be followed by a path.\n");
+		return 2;
+	}
+
+	if (state.create_index_name != state.AWAITING)
+		state.create_index_name = state.NOT_SPECIFIED;
+
+	if (state.sign == state.AWAITING)
+	{
+		printf("--sign must be followed by a path.\n");
+		return 2;
+	}
+
 	if (state.operation != state.SPECIFIED)
 	{
 		printf ("Error: no operation specified\n");
 		return 2;
+	}
+
+	/* Operations that don't require a config file */
+	switch(params->operation)
+	{
+		case OPERATION_CREATE_INDEX:
+			return repo_tools::create_index(params) ? 0 : 1;
+
+		default:
+			break;
 	}
 
 	/* Read the config file */

@@ -18,6 +18,7 @@ find_package(PkgConfig)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(TINY_XML2 REQUIRED tinyxml2)
 pkg_check_modules(ZLIB REQUIRED zlib)
+pkg_check_modules(LIBCRYPTO REQUIRED libcrypto)
 
 if (WITH_TESTS)
 	find_package (Boost COMPONENTS unit_test_framework REQUIRED)

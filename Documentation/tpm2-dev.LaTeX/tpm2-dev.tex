@@ -465,6 +465,28 @@
 	\vspace{1em}
 	Their type in \file{config.xml} is \texttt{dir}.
 	
+	\subsubsection{Index}
+	
+	Directory repositories may have one or more indexes per architecture. Each index must have a unique name within the repository and architecture. It consists of two files, a metadata list named \file{<name>.index} and a file index \file{<id>.files}, which is named with a unique id referenced in the file index. This allows to regenerate the index and swap it with the old one in an atomic operation (because \texttt{rename(2)} is atomic and only one file is renamed). The shape of this id is implementation dependent. A good choice may be a timestamp, however checking if such a file exists already/creating the new one with \texttt{O\_CREAT | O\_EXCL} is always helpful.
+	
+	The package list is kept in a human readable format. After a file 'identifier' (like a 'magic number') with an index version (currently "1.0") follows the file index's filename and SHA256 sum (as the package list can be signed this will authenticate the file list, too). Next follows the concatenation of all package version's metadata in xml format followed by the sha256 sum of each package, and an optional signature. The order in which the package versions are listed is not important as the package list is designed to be read during \program{tpm2}'s start and held in memory. An example is given in figure \ref{fig:dir_index_package_list}.
+	
+	\begin{figure}
+		tpm\_repo\_index 1.0 \\
+		20210728120000000.files 89f250efe1058b026a23de76feea5695ae948d9511a629511f886f22990113df \\
+		<pkg> \\
+			\dots \\
+		</pkg> \\
+		89f250efe1058b026a23de76feea5695ae948d9511a629511f886f22990113df \\
+		\dots \\
+		</pkg> \\
+		89f250efe1058b026a23de76feea5695ae948d9511a629511f886f22990113df \\
+		signature \\
+		
+		\caption{Example package list of directory repository's index}
+		\label{fig:dir_index_package_list}
+	\end{figure}
+	
 	
 	\section{About configuration files in packages}
 	\label{sec:about_configuration_files_in_pacakges}

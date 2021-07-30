@@ -2,7 +2,7 @@
 
   * repo index
 
-  * different database with less overhead (if possible)
+  * different database with less overhead (if possible and required)
 
   * parallel compression (and decompression?)
 
