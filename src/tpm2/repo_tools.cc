@@ -192,12 +192,12 @@ void create_index_arch (shared_ptr<Parameters> params, const fs::path& p,
 					throw gp_exception ("EVP_DigestFinal failed");
 
 				string str_digest;
-				char conv[3];
-				conv[10] = '\0';
+				char conv[10];
 
 				for (unsigned i = 0; i < size; i++)
 				{
 					snprintf(conv, sizeof(conv), "%02x", (unsigned) ((unsigned char*) buf)[i]);
+					conv[sizeof(conv) - 1] = '\0';
 					str_digest += conv;
 				}
 
@@ -385,12 +385,12 @@ void create_index_arch (shared_ptr<Parameters> params, const fs::path& p,
 					throw gp_exception ("EVP_DigestFinal failed");
 
 				string str_digest;
-				char conv[3];
-				conv[10] = '\0';
+				char conv[10];
 
 				for (unsigned i = 0; i < size; i++)
 				{
 					snprintf(conv, sizeof(conv), "%02x", (unsigned) ((unsigned char*) buf)[i]);
+					conv[sizeof(conv) - 1] = '\0';
 					str_digest += conv;
 				}
 
