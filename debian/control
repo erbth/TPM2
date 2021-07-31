@@ -6,6 +6,7 @@ Build-Depends:
  debhelper (>= 11),
  cmake (>= 3.13),
  libsqlite3-dev,
+ libssl-dev,
  libtinyxml2-dev,
  zlib1g-dev
 Standards-Version: 4.1.3
