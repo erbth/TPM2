@@ -136,7 +136,7 @@ bool read_config_file (shared_ptr<Parameters> params)
 				return false;
 			}
 
-			if (strcmp (tmp, "dir") == 0)
+			if (strcmp (tmp, "dir") == 0 || strcmp (tmp, "dir_allow_unsigned") == 0)
 			{
 				const char *tmp2 = ce->GetText();
 
@@ -148,7 +148,11 @@ bool read_config_file (shared_ptr<Parameters> params)
 					return false;
 				}
 
-				RepositorySpecification r(RepositorySpecification::TYPE_DIR, tmp2);
+				auto type = RepositorySpecification::TYPE_DIR;
+				if (strcmp (tmp, "dir_allow_unsigned") == 0)
+					type = RepositorySpecification::TYPE_DIR_ALLOW_UNSIGNED;
+
+				RepositorySpecification r(type, tmp2);
 
 				if (find (params->repos.cbegin(), params->repos.cend(), r) != params->repos.cend())
 				{

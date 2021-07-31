@@ -103,7 +103,7 @@ bool pack (const string& _dir)
 			return false;
 		}
 
-		mdata = read_package_meta_data_from_xml (buf, size);
+		mdata = read_package_meta_data_from_xml (buf.buf, size);
 	}
 	catch (invalid_package_meta_data_xml& e)
 	{

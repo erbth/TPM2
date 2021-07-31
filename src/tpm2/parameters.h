@@ -36,6 +36,7 @@ struct RepositorySpecification
 	/* Good for parsing etc. */
 	static const char TYPE_INVALID = -1;
 	static const char TYPE_DIR = 0;
+	static const char TYPE_DIR_ALLOW_UNSIGNED = 1;
 
 	const char type;
 

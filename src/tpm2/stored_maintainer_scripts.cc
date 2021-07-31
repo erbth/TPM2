@@ -83,7 +83,7 @@ fs::path StoredMaintainerScripts::get_path (
 void StoredMaintainerScripts::ensure_read_stream()
 {
 	if (!rs)
-		rs = make_unique<tf::ReadStream> (get_path());
+		rs = make_unique<tf::GZReadStream> (get_path());
 }
 
 

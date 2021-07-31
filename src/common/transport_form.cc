@@ -9,6 +9,8 @@
 
 extern "C" {
 #include <endian.h>
+#include <sys/types.h>
+#include <unistd.h>
 }
 
 using namespace std;
@@ -46,7 +48,21 @@ int Writer::write (const char *buf, int size)
 
 
 /* To read files */
-ReadStream::ReadStream (const string& filename)
+ReadStream::ReadStream()
+{
+}
+
+ReadStream::~ReadStream()
+{
+}
+
+string ReadStream::get_filename() const
+{
+	return "";
+}
+
+
+GZReadStream::GZReadStream (const string& filename)
 	: filename(filename)
 {
 	f = gzopen (filename.c_str(), "re");
@@ -56,13 +72,18 @@ ReadStream::ReadStream (const string& filename)
 }
 
 
-ReadStream::~ReadStream ()
+GZReadStream::~GZReadStream ()
 {
 	gzclose (f);
 }
 
 
-void ReadStream::read (char *buf, unsigned cnt)
+string GZReadStream::get_filename() const
+{
+	return filename;
+}
+
+void GZReadStream::read (char *buf, size_t cnt)
 {
 	int ret = gzread (f, buf, cnt);
 
@@ -74,7 +95,7 @@ void ReadStream::read (char *buf, unsigned cnt)
 }
 
 
-unsigned ReadStream::tell ()
+size_t GZReadStream::tell ()
 {
 	int ret = gztell (f);
 	if (ret < 0)
@@ -84,10 +105,59 @@ unsigned ReadStream::tell ()
 }
 
 
-void ReadStream::seek (unsigned pos)
+void GZReadStream::seek (size_t pos)
 {
 	if (gzseek (f, pos, SEEK_SET) < 0)
 		throw system_error (error_code (EIO, generic_category()));
+}
+
+
+FDReadStream::FDReadStream(int fd, bool close)
+	: fd(fd), close(close)
+{
+}
+
+FDReadStream::~FDReadStream()
+{
+	if (close && fd >= 0)
+		::close(fd);
+}
+
+void FDReadStream::read(char* buf, size_t cnt)
+{
+	size_t read_total = 0;
+
+	while (read_total < cnt)
+	{
+		ssize_t ret = ::read(fd, buf + read_total, cnt - read_total);
+		if (ret < 0)
+			throw system_error(error_code(errno, generic_category()));
+
+		if (ret == 0)
+		{
+			if (errno == EINTR)
+				continue;
+			else
+				throw system_error(error_code(errno, generic_category()));
+		}
+
+		read_total += ret;
+	}
+}
+
+size_t FDReadStream::tell()
+{
+	int ret = lseek(fd, 0, SEEK_CUR);
+	if (ret < 0)
+		throw system_error(error_code(errno, generic_category()));
+
+	return ret;
+}
+
+void FDReadStream::seek(size_t pos)
+{
+	if (lseek(fd, pos, SEEK_SET) < 0)
+		throw system_error(error_code(errno, generic_category()));
 }
 
 
@@ -128,7 +198,7 @@ TOCSection TOCSection::read_from_binary (ReadStream& rs)
 			break;
 
 		default:
-			throw InvalidToc (rs.filename, "Invalid section type " + to_string(type));
+			throw InvalidToc (rs.get_filename(), "Invalid section type " + to_string(type));
 	}
 
 	return TOCSection(type, start, size);
@@ -159,7 +229,7 @@ TableOfContents TableOfContents::read_from_binary (ReadStream& rs)
 
 	uint8_t version = ((uint8_t*) buf)[0];
 	if (version != 1)
-		throw InvalidToc (rs.filename, "Invalid version " + to_string(version));
+		throw InvalidToc (rs.get_filename(), "Invalid version " + to_string(version));
 
 	TableOfContents toc;
 	toc.version = version;
@@ -378,12 +448,12 @@ ReadTransportForm read_transport_form (ReadStream& rs)
 
 	/* Read desc section */
 	if (rtf.toc.sections.size() == 0 || rtf.toc.sections[0].type != SEC_TYPE_DESC)
-		throw InvalidToc (rs.filename, "There is no desc section.");
+		throw InvalidToc (rs.get_filename(), "There is no desc section.");
 
 	ManagedBuffer<char> buf(rtf.toc.sections[0].size);
 	rs.read (buf.buf, buf.size);
 
-	rtf.mdata = read_package_meta_data_from_xml (buf, buf.size);
+	rtf.mdata = read_package_meta_data_from_xml (buf.buf, buf.size);
 
 	/* Read the file index and ensure that the archive section is there if and
 	 * only if the index is in the file. */

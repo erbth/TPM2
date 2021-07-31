@@ -57,7 +57,7 @@ void write_string (int fd, const string& buf, const char* error_msg = nullptr)
 void create_index_arch (shared_ptr<Parameters> params, const fs::path& p,
 		const string& name, RSA* signing_key = nullptr, const string& signing_key_name = string())
 {
-	char buf[10240];
+	char buf[max(10240, EVP_MAX_MD_SIZE)];
 	int plist = -1;
 	int findex = -1;
 
@@ -122,7 +122,7 @@ void create_index_arch (shared_ptr<Parameters> params, const fs::path& p,
 
 			/* Read package meta data */
 			{
-				auto rs = make_shared<tf::ReadStream>(entry.path());
+				auto rs = make_shared<tf::GZReadStream>(entry.path());
 				auto rtf = tf::read_transport_form (*rs);
 
 				pkgs.push_back(rtf.mdata);
@@ -231,13 +231,21 @@ void create_index_arch (shared_ptr<Parameters> params, const fs::path& p,
 		{
 			write_string (findex, pkg->name + "@" +
 					Architecture::to_string(pkg->architecture) + ":" +
-					pkg->version.to_string() + "        ");
+					pkg->version.to_string());
+
+			/* End of package descriptor */
+			buf[0] = '\0';
+			if (write(findex, buf, 1) != 1)
+				throw system_error(error_code(errno ? errno : EIO, generic_category()));
 
 			auto pos = lseek(findex, 0, SEEK_CUR);
 			if (pos < 0)
 				throw system_error(error_code(errno, generic_category()));
 
-			dir_positions[i++] = pos - 8;
+			dir_positions[i++] = pos;
+
+			/* Address offset dummy */
+			write_string (findex, "        ");
 		}
 
 		/* End of index */
@@ -266,7 +274,7 @@ void create_index_arch (shared_ptr<Parameters> params, const fs::path& p,
 					pkg->version.to_string() + "_" +
 					Architecture::to_string(pkg->architecture) + ".tpm2");
 
-			auto rs = make_shared<tf::ReadStream>(tfp);
+			auto rs = make_shared<tf::GZReadStream>(tfp);
 			auto rtf = tf::read_transport_form (*rs);
 
 			tf::TOCSection* ind_sec = nullptr;
@@ -279,45 +287,43 @@ void create_index_arch (shared_ptr<Parameters> params, const fs::path& p,
 				}
 			}
 
-			if (!ind_sec)
-			{
-				throw gp_exception("  No file index found in transport form '" +
-						tfp.string() + "'");
-			}
-
-			rs->seek(ind_sec->start);
-
-			/* Save start position */
+			/* Save start position of potential file index (otherwise size will
+			 * simply be 0) */
 			uint64_t pos = lseek(findex, 0, SEEK_CUR);
 			if (pos < 0)
 				throw system_error(error_code(errno, generic_category()));
 
 			positions[i++] = pos;
 
-			/* Copy file index from the transport form */
-			ssize_t total_written = 0;
-			while (total_written < ind_sec->size)
+			if (ind_sec)
 			{
-				int to_process = ind_sec->size - total_written;
-				if (to_process > (int) sizeof(buf))
-					to_process = sizeof(buf);
+				rs->seek(ind_sec->start);
 
-				rs->read(buf, to_process);
-
-				int written = 0;
-				while (written < to_process)
+				/* Copy file index from the transport form */
+				ssize_t total_written = 0;
+				while (total_written < ind_sec->size)
 				{
-					auto ret = write (findex, buf + written, to_process - written);
-					if (ret < 0)
-						throw system_error(error_code(errno, generic_category()));
+					int to_process = ind_sec->size - total_written;
+					if (to_process > (int) sizeof(buf))
+						to_process = sizeof(buf);
 
-					if (ret == 0)
-						throw system_error(error_code(errno ? errno : EIO, generic_category()));
+					rs->read(buf, to_process);
 
-					written += ret;
+					int written = 0;
+					while (written < to_process)
+					{
+						auto ret = write (findex, buf + written, to_process - written);
+						if (ret < 0)
+							throw system_error(error_code(errno, generic_category()));
+
+						if (ret == 0)
+							throw system_error(error_code(errno ? errno : EIO, generic_category()));
+
+						written += ret;
+					}
+
+					total_written += written;
 				}
-
-				total_written += written;
 			}
 		}
 
@@ -529,7 +535,7 @@ bool create_index (shared_ptr<Parameters> params)
 					throw system_error(error_code(errno, generic_category()));
 
 				signing_key = PEM_read_bio_RSAPrivateKey(
-						bio, &signing_key, nullptr, nullptr);
+						bio, nullptr, nullptr, nullptr);
 
 				BIO_free(bio);
 

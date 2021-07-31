@@ -5,7 +5,9 @@
 #ifndef __PACKAGE_PROVIDER_H
 #define __PACKAGE_PROVIDER_H
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -19,16 +21,45 @@
 #include "file_list.h"
 #include "package_version.h"
 #include "installation_package_version.h"
+#include "repo_index.h"
 
 
+/** Trust model: ProvidedPackage checks a digest contained in an authenticated
+ * index against the real archive.
+ *
+ * If ProvidedPackage is given a ReadStream, the ReadStream was authenticated
+ * already (or authentication is bypassed intentionally). Otherwise the archive
+ * is checked before it is opened, which requires and index to be present,
+ * unless disable_repo_digest_check is set to true.
+ *
+ * An index given to ProvidedPackage must have been authenticated already (or
+ * authentication of it bypassed intentionally).
+ *
+ * If an disable_repo_digest_check is false and no index is given, the read
+ * stream cannot be (re-) opened. This situation corresponds to the case where
+ * no index is present or the package is not in the index, in which case it
+ * can't be authenticated through the index (signing of archives is a different
+ * matter but does not help in authenticating repositories, hence in this case).
+ *
+ * Therefore if a package is not mentioned in an index,
+ * disable_repo_digest_check should be true. */
 class ProvidedPackage : public PackageVersion, public InstallationPackageVersion
 {
+public:
+	/* A factory for read streams, but as a function */
+	using get_read_stream_t = std::function<std::shared_ptr<TransportForm::ReadStream>()>;
+
 private:
 	std::shared_ptr<PackageMetaData> mdata;
 
-	/* Referring to the original transport form */
-	TransportForm::TableOfContents toc;
+	/* Index and signature checking */
+	bool disable_repo_digest_check;
+
+	/* Referring to the original transport form and potentially and index */
+	std::optional<TransportForm::TableOfContents> toc;
 	std::shared_ptr<TransportForm::ReadStream> rs;
+	get_read_stream_t get_read_stream;
+	std::shared_ptr<RepoIndex> index;
 
 	std::shared_ptr<FileList> files;
 	std::shared_ptr<std::vector<std::string>> config_files;
@@ -44,13 +75,23 @@ private:
 	std::shared_ptr<ManagedBuffer<char>> postrm;
 
 	void ensure_read_stream();
+	TransportForm::TableOfContents& ensure_toc();
 
 public:
-	/* A constructor */
+	/* A constructor
+	 *
+	 * At least one of the following argument combinations must be provided:
+	 *   * mdata, rs, toc
+	 *   * mdata, get_read_stream, disable_repo_digest_check = true
+	 *   * mdata, get_read_stream, index
+	 * */
 	ProvidedPackage(
 			std::shared_ptr<PackageMetaData> mdata,
-			const TransportForm::TableOfContents& toc,
-			std::shared_ptr<TransportForm::ReadStream> rs);
+			const TransportForm::TableOfContents* toc,
+			std::shared_ptr<TransportForm::ReadStream> rs,
+			get_read_stream_t get_read_stream,
+			std::shared_ptr<RepoIndex> index,
+			bool disable_repo_digest_check);
 
 	/* PackageVersion interface */
 	bool is_installed() const override;

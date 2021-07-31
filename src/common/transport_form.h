@@ -39,28 +39,61 @@ namespace TransportForm
 
 	class ReadStream
 	{
-	private:
-		gzFile f;
+	protected:
+		ReadStream();
 
 	public:
+		virtual ~ReadStream() = 0;
+
+		virtual std::string get_filename() const;
+
+		virtual void read (char *buf, size_t cnt) = 0;
+		virtual size_t tell () = 0;
+		virtual void seek (size_t pos) = 0;
+	};
+
+	class GZReadStream : public ReadStream
+	{
+	protected:
+		gzFile f;
 		const std::string filename;
 
+	public:
 		/* @raises std::system_error if it cannot open the file. */
-		ReadStream (const std::string& filename);
-		ReadStream (const ReadStream& o) = delete;
+		GZReadStream (const std::string& filename);
+		GZReadStream (const GZReadStream& o) = delete;
 
-		~ReadStream();
+		virtual ~GZReadStream();
+
+		std::string get_filename() const override;
 
 		/* If not all data could be read, the function raises an exception.
 		 * @raises std::system_error */
-		void read (char *buf, unsigned cnt);
+		void read (char *buf, size_t cnt) override;
 
 		/* @raises std::system_error */
-		unsigned tell ();
+		size_t tell () override;
 
 		/* Absolute seek. "[C]an be extremely slow" (zlib manual) ...
 		 * @raises std::system_error */
-		void seek (unsigned pos);
+		void seek (size_t pos) override;
+	};
+
+	class FDReadStream : public ReadStream
+	{
+	protected:
+		int fd;
+		bool close;
+
+	public:
+		/** @param close  If true, the file descriptor will be closed when the
+		 * 		object is destroyed. */
+		FDReadStream(int fd, bool close);
+		virtual ~FDReadStream();
+
+		void read (char *buf, size_t cnt) override;
+		size_t tell () override;
+		void seek (size_t pos) override;
 	};
 
 

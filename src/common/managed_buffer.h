@@ -23,15 +23,18 @@ public:
 		buf = new T[size];
 	}
 
-	/* No copy constructor */
+	/* No copy constructor/assignment */
 	ManagedBuffer (const ManagedBuffer&) = delete;
+	ManagedBuffer& operator=(const ManagedBuffer&) = delete;
 
-	/* Move constructor */
+	/* Move constructor/assignment */
 	ManagedBuffer (ManagedBuffer&& o)
+		: buf(o.buf), size(o.size)
 	{
-		buf = o.buf;
 		o.buf = nullptr;
 	}
+
+	ManagedBuffer& operator=(ManagedBuffer&& o) = delete;
 
 	~ManagedBuffer ()
 	{
@@ -58,10 +61,11 @@ public:
 		size = initial;
 	}
 
-	/* No copy constructor */
+	/* No copy constructor/assignment */
 	DynamicBuffer (const DynamicBuffer&) = delete;
+	DynamicBuffer& operator=(const DynamicBuffer&) = delete;
 
-	/* Move constructor */
+	/* Move constructor/assignment */
 	DynamicBuffer (DynamicBuffer&& o)
 	{
 		buf = o.buf;
@@ -69,6 +73,20 @@ public:
 
 		o.buf = nullptr;
 		o.size = 0;
+	}
+
+	DynamicBuffer& operator=(DynamicBuffer&& o)
+	{
+		if (buf)
+			free (buf);
+
+		buf = o.buf;
+		size = o.size;
+
+		o.buf = nullptr;
+		o.size = 0;
+
+		return this;
 	}
 
 	~DynamicBuffer ()

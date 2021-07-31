@@ -6,11 +6,14 @@
 #include "package_provider.h"
 #include "directory_repository.h"
 #include "common_utilities.h"
+#include "crypto_tools.h"
 
 extern "C" {
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <fcntl.h>
 }
 
 using namespace std;
@@ -19,25 +22,94 @@ namespace tf = TransportForm;
 
 ProvidedPackage::ProvidedPackage (
 		shared_ptr<PackageMetaData> mdata,
-		const tf::TableOfContents& toc,
-		shared_ptr<tf::ReadStream> rs)
+		const tf::TableOfContents* toc,
+		shared_ptr<tf::ReadStream> rs,
+		get_read_stream_t get_read_stream,
+		shared_ptr<RepoIndex> index,
+		bool disable_repo_digest_check)
 	:
 		PackageVersion(mdata->name, mdata->architecture, mdata->source_version, mdata->version),
 		mdata(mdata),
-		toc(toc),
-		rs(rs)
+		disable_repo_digest_check(disable_repo_digest_check),
+		toc(toc ? optional<tf::TableOfContents>(*toc) : nullopt),
+		rs(rs),
+		get_read_stream(get_read_stream),
+		index(index)
 {
-	if (!mdata || !rs)
-		throw invalid_argument ("mdata or rs nullptr");
+	if (!mdata)
+		throw invalid_argument ("mdata nullptr");
+
+	if (!(
+			(rs && toc) ||
+			(get_read_stream && disable_repo_digest_check) ||
+			(get_read_stream && index)))
+	{
+		throw invalid_argument ("Invalid combination of info sources");
+	}
+
 }
 
 
 void ProvidedPackage::ensure_read_stream()
 {
-	if (!rs)
+	if (rs)
+		return;
+
+	if (!get_read_stream)
+		throw invalid_argument ("Reopening read streams requires a read stream generator.");
+
+	if (!index && !disable_repo_digest_check)
 	{
-		throw invalid_argument ("Reopening read streams is not implemented yet.");
+		throw invalid_argument ("Reopening read streams requires an index or "
+				"disabling repo digest checks.");
 	}
+
+	auto tmp_rs = get_read_stream();
+
+	if (index)
+	{
+		/* Integrity check transport form */
+		auto digest = index->get_digest(mdata->name, mdata->architecture, mdata->version);
+		if (!digest)
+			throw gp_exception("Digest for transport form is not in index given to ProvidedPackage");
+
+		auto filename = tmp_rs->get_filename();
+		int fd = open(filename.c_str(), O_RDONLY);
+		if (fd < 0)
+			throw system_error(error_code(errno, generic_category()));
+
+		try
+		{
+			if (!verify_sha256_fd(fd, *digest))
+			{
+				throw gp_exception("SHA256 sum missmatch of package '" +
+						mdata->name + "@" + Architecture::to_string(mdata->architecture) +
+						":" + mdata->version.to_string() + "'");
+			}
+		}
+		catch(...)
+		{
+			close(fd);
+			throw;
+		}
+
+		close(fd);
+	}
+
+	rs = tmp_rs;
+}
+
+
+tf::TableOfContents& ProvidedPackage::ensure_toc()
+{
+	if (toc)
+		return *toc;
+
+	ensure_read_stream();
+
+	rs->seek(0);
+	toc = tf::TableOfContents::read_from_binary(*rs);
+	return *toc;
 }
 
 
@@ -110,17 +182,27 @@ shared_ptr<FileList> ProvidedPackage::get_file_list()
 {
 	if (!files)
 	{
-		for (const auto& sec : toc.sections)
+		if (index)
 		{
-			if (sec.type == tf::SEC_TYPE_FILE_INDEX)
+			/* Get file list from index */
+			files = index->get_file_list (mdata->name, mdata->architecture, mdata->version);
+			if (!files)
+				throw gp_exception("File list is not in index given to ProvidedPackage");
+		}
+		else
+		{
+			for (const auto& sec : ensure_toc().sections)
 			{
-				ensure_read_stream();
+				if (sec.type == tf::SEC_TYPE_FILE_INDEX)
+				{
+					ensure_read_stream();
 
-				if (rs->tell () != sec.start)
-					rs->seek (sec.start);
+					if (rs->tell () != sec.start)
+						rs->seek (sec.start);
 
-				files = tf::read_file_list (*rs, sec.size);
-				break;
+					files = tf::read_file_list (*rs, sec.size);
+					break;
+				}
 			}
 		}
 	}
@@ -136,7 +218,8 @@ shared_ptr<vector<string>> ProvidedPackage::get_config_files()
 {
 	if (!config_files)
 	{
-		for (const auto& sec : toc.sections)
+		ensure_toc();
+		for (const auto& sec : ensure_toc().sections)
 		{
 			if (sec.type == tf::SEC_TYPE_CONFIG_FILES)
 			{
@@ -162,7 +245,7 @@ shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_preinst()
 {
 	if (!preinst)
 	{
-		for (auto& sec : toc.sections)
+		for (auto& sec : ensure_toc().sections)
 		{
 			if (sec.type == tf::SEC_TYPE_PREINST)
 			{
@@ -186,7 +269,7 @@ shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_configure()
 {
 	if (!configure)
 	{
-		for (auto& sec : toc.sections)
+		for (auto& sec : ensure_toc().sections)
 		{
 			if (sec.type == tf::SEC_TYPE_CONFIGURE)
 			{
@@ -210,7 +293,8 @@ shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_unconfigure()
 {
 	if (!unconfigure)
 	{
-		for (auto& sec : toc.sections)
+		ensure_toc();
+		for (auto& sec : ensure_toc().sections)
 		{
 			if (sec.type == tf::SEC_TYPE_UNCONFIGURE)
 			{
@@ -234,7 +318,7 @@ shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_postrm()
 {
 	if (!postrm)
 	{
-		for (auto& sec : toc.sections)
+		for (auto& sec : ensure_toc().sections)
 		{
 			if (sec.type == tf::SEC_TYPE_POSTRM)
 			{
@@ -256,7 +340,7 @@ shared_ptr<ManagedBuffer<char>> ProvidedPackage::get_postrm()
 
 bool ProvidedPackage::has_archive ()
 {
-	for (auto& sec : toc.sections)
+	for (auto& sec : ensure_toc().sections)
 	{
 		if (sec.type == tf::SEC_TYPE_ARCHIVE)
 		{
@@ -283,7 +367,7 @@ void ProvidedPackage::unpack_archive_to_directory(const string& dst, vector<stri
 {
 	size_t archive_size = 0;
 
-	for (auto& sec : toc.sections)
+	for (auto& sec : ensure_toc().sections)
 	{
 		if (sec.type == tf::SEC_TYPE_ARCHIVE)
 		{
@@ -444,7 +528,12 @@ PackageProvider::PackageProvider (shared_ptr<Parameters> params)
 		if (repo.type == RepositorySpecification::TYPE_DIR)
 		{
 			repositories.emplace_back(make_shared<DirectoryRepository>(
-						params->target + "/" + repo.param1));
+						params, repo.param1, true));
+		}
+		else if (repo.type == RepositorySpecification::TYPE_DIR_ALLOW_UNSIGNED)
+		{
+			repositories.emplace_back(make_shared<DirectoryRepository>(
+						params, repo.param1, false));
 		}
 	}
 }
@@ -467,20 +556,67 @@ set<VersionNumber> PackageProvider::list_package_versions (const string& name, c
 }
 
 
+class ReadStreamFactory
+{
+private:
+	const string filename;
+
+public:
+	ReadStreamFactory(const string& filename)
+		: filename(filename)
+	{
+	}
+
+	shared_ptr<tf::ReadStream> operator()()
+	{
+		return make_shared<tf::GZReadStream>(filename);
+	}
+};
+
 shared_ptr<ProvidedPackage> PackageProvider::get_package (const string& name,
 		const int architecture, const VersionNumber& version)
 {
 	for (auto &r : repositories)
 	{
-		auto filename = r->get_package (name, architecture, version);
+		auto ret = r->get_package (name, architecture, version);
 
-		if (filename)
+		if (ret)
 		{
-			auto rs = make_shared<tf::ReadStream>(*filename);
+			auto [filename, index] = *ret;
+			ReadStreamFactory rsf(filename);
 
-			auto rtf = tf::read_transport_form (*rs);
+			/* A read stream can only be opened if it does not have to be digest
+			 * checked */
+			if (!index && !r->digest_checking_required())
+			{
+				auto rs = rsf();
+				auto rtf = tf::read_transport_form (*rs);
 
-			return make_shared<ProvidedPackage>(rtf.mdata, rtf.toc, rs);
+				return make_shared<ProvidedPackage>(
+						rtf.mdata,
+						&rtf.toc, rs,
+						rsf,
+						nullptr,
+						true);
+			}
+			else if (index)
+			{
+				auto mdata = index->get_mdata(name, architecture, version);
+				if (!mdata)
+					throw gp_exception("Package not in index returned by repository");
+
+				return make_shared<ProvidedPackage>(
+						mdata,
+						nullptr, nullptr,
+						rsf,
+						index,
+						false);
+			}
+			else
+			{
+				throw gp_exception("Transport form '" + filename +
+						"' requires digest checking but is not part of an index.");
+			}
 		}
 	}
 

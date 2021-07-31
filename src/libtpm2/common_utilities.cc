@@ -15,6 +15,23 @@ using namespace std;
 namespace fs = std::filesystem;
 
 
+unsigned char ascii_to_half_byte(char c)
+{
+	if (c > 'a')
+		return c - 'a' + 0x0a;
+	if (c > 'A')
+		return c - 'A' + 0x0a;
+	return c - '0';
+}
+
+/* Two ASCII characters representing a byte to unsigned char (e.g. "ab" -> 0xab)
+ * */
+unsigned char ascii_to_byte(const char* cs)
+{
+	return ascii_to_half_byte(cs[0]) << 4 | (ascii_to_half_byte(cs[1]) & 0xf);
+}
+
+
 string get_absolute_path (const string& path)
 {
 	string abs_path = fs::absolute(path);

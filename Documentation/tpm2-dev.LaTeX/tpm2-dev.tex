@@ -440,7 +440,7 @@
 	
 	\noindent
 	\dirtree{.1 <tpm file\_version=''2.0''>.
-		.2 <repo type= \{dir\}> \DTcomment{path to Directory Repository}.
+		.2 <repo type= \{dir|dir\_allow\_unsigned\}> \DTcomment{path to Directory Repository}.
 		.2 <default\_arch> \DTcomment{\{i386 | amd64\}}.
 	}
 
@@ -698,7 +698,6 @@
 	\label{sec:current_state}
 	
 	\begin{itemize}
-		\item signature not supported (low priority)
 		\item the db / system is not locked while tpm is running (low priority)
 	\end{itemize}
 	

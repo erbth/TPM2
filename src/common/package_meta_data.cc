@@ -161,11 +161,11 @@ unique_ptr<XMLDocument> PackageMetaData::to_xml() const
 
 
 shared_ptr<PackageMetaData> read_package_meta_data_from_xml (
-		const ManagedBuffer<char>& buf, size_t size)
+		const char* buf, size_t size)
 {
 	XMLDocument doc;
 
-	if (doc.Parse (buf.buf, size) != XML_SUCCESS)
+	if (doc.Parse (buf, size) != XML_SUCCESS)
 	{
 		throw invalid_package_meta_data_xml ("Could not parse xml: " +
 				string(doc.ErrorStr()) + ".");

@@ -110,7 +110,7 @@ struct PackageMetaData
  *
  * @raises invalid_package_meta_data_xml */
 std::shared_ptr<PackageMetaData> read_package_meta_data_from_xml (
-		const ManagedBuffer<char>& buf, size_t size);
+		const char* buf, size_t size);
 
 
 /***************************** Exceptions *************************************/

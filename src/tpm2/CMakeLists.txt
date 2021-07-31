@@ -11,6 +11,8 @@ add_executable(tpm2
 	pkg_tools.cc
 	installation_package_version.cc
 	repo_tools.cc
+	repo_index.cc
+	standard_repo_index.cc
 	../common/dependencies.cc
 	../common/package_meta_data.cc
 	../common/transport_form.cc

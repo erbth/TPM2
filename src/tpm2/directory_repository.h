@@ -10,30 +10,44 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <tuple>
 #include "repository.h"
 #include "version_number.h"
+#include "parameters.h"
 
 
 class DirectoryRepository : public Repository
 {
 protected:
+	const std::shared_ptr<Parameters> params;
 	const std::filesystem::path location;
+	const bool require_signing;
 
-	std::list<std::pair<int,std::map<std::string, std::vector<std::pair<VersionNumber,std::string>>>>> index_cache;
+	std::list<
+		std::pair<
+			int,
+			std::map<std::string, std::vector<std::tuple<VersionNumber, std::string, std::shared_ptr<RepoIndex>>>>
+		>
+	> index_cache;
 
 	/* @returns May be null */
-	const std::map<std::string, std::vector<std::pair<VersionNumber,std::string>>>* read_index (int arch);
+	const std::map<std::string, std::vector<std::tuple<VersionNumber,std::string,std::shared_ptr<RepoIndex>>>>*
+		read_index (int arch);
 
 public:
-	DirectoryRepository (const std::filesystem::path& location);
+	DirectoryRepository (std::shared_ptr<Parameters> params,
+			const std::filesystem::path& location, const bool require_signing);
+
 	virtual ~DirectoryRepository();
 
 
 	std::set<VersionNumber> list_package_versions (
 			const std::string& name, const int architecture) override;
 
-	std::optional<std::string> get_package (const std::string& name,
-			const int architecture, const VersionNumber& version) override;
+	std::optional<std::pair<std::string, std::shared_ptr<RepoIndex>>> get_package (
+			const std::string& name, const int architecture, const VersionNumber& version) override;
+
+	bool digest_checking_required() override;
 };
 
 

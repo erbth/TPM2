@@ -17,6 +17,15 @@
 #define COLOR_NORMAL "\033[0m"
 #define COLOR_RED "\033[31m"
 #define COLOR_GREEN "\033[32m"
+#define COLOR_BRIGHT_YELLOW "\033[93m"
+
+/* ASCII representing half byte to unsigned char (e.g. 'a' -> 0x0a) */
+unsigned char ascii_to_half_byte(char c);
+
+/* Two ASCII characters representing a byte to unsigned char (e.g. "ab" -> 0xab)
+ * */
+unsigned char ascii_to_byte(const char* cs);
+
 
 /* Get the abslute path of a potentially relaive path.
  *

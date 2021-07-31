@@ -1,3 +1,5 @@
+  * dir_update, ... repository types
+
   * magic number in archives
 
   * repo index
