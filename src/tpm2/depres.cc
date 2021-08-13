@@ -130,11 +130,17 @@ ComputeInstallationGraphResult compute_installation_graph(
 			get_package_version);
 
 	/* Depres 2 specific policy */
-	// solver->set_policy(prefer_upgrade ? Policy::upgrade : Policy::keep_newer);
 	solver->set_policy(Policy::upgrade);
-	solver->set_evaluate_all(upgrade_mode && selected_packages.empty());
 
-	/* Try to solve the update problem and returnt he result. */
+	if (upgrade_mode)
+	{
+		if (selected_packages.empty())
+			solver->set_evaluate_all(true);
+		else
+			solver->set_policy(Policy::strong_selective_upgrade);
+	}
+
+	/* Try to solve the update problem and return the result. */
 	if (solver->solve())
 	{
 		return ComputeInstallationGraphResult(move(solver->get_G()));

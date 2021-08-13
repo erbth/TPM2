@@ -251,6 +251,18 @@ float Depres2Solver::compute_alpha(
 		b = (float) version_index / versions_count;
 		break;
 
+	case Policy::strong_selective_upgrade:
+		if (pv->is_selected)
+		{
+			b = ((float) version_index + 0.9f) / versions_count;
+			b = (b * b * b) * 50.f;
+		}
+		else
+		{
+			b = (float) version_index / versions_count;
+		}
+		break;
+
 	case Policy::keep_newer:
 	default:
 		if (pv->installed_version && *(pv->installed_version) == *(version))
@@ -370,7 +382,8 @@ void Depres2Solver::set_policy(int p)
 {
 	if (
 			p != Policy::keep_newer &&
-			p != Policy::upgrade
+			p != Policy::upgrade &&
+			p != Policy::strong_selective_upgrade
 	   )
 	{
 		return;
@@ -445,7 +458,7 @@ bool Depres2Solver::solve()
 		if (sp.second)
 			v->constraints.insert(make_pair(nullptr, sp.second));
 
-		if (!v->version_is_satisfying())
+		if (!v->version_is_satisfying() || policy == Policy::strong_selective_upgrade)
 			insert_into_active(v.get());
 	}
 

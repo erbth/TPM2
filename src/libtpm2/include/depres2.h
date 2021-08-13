@@ -63,11 +63,15 @@ namespace depres
 	 *     possible, prefer the newest version.
 	 *
 	 *   * upgrade: Prefer the newest version.
+	 *
+	 *   * strong_selective_upgrade: Give the newest versions of selected
+	 *     packages a strong bias.
 	 */
 	enum Policy
 	{
 		keep_newer = 0,
-		upgrade = 1
+		upgrade = 1,
+		strong_selective_upgrade = 2
 	};
 
 	/* The depres algorithm version 2.0 */
