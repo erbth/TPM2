@@ -16,8 +16,6 @@
 'Wishlist'
 ---
 
-  * update
-
   * show files of an installed package (and read files of uninstalled packages
     from repo)
 
