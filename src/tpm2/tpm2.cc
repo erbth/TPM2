@@ -58,6 +58,11 @@ void print_help()
 
 "  --install               Install or uprade the specified packages\n\n"
 
+"  --upgrade               If packages are specified, install or upgrade them\n"
+"                          but use a stronger bias to upgrading them compared\n"
+"                          to --install. If no packages are specified, try to\n"
+"                          upgrade all installed packages.\n\n"
+
 "  --adopt-all             Adopt all files without asking. This will also\n"
 "                          overwrite config files that are part of a package to\n"
 "                          be installed/changed and exist on the system already\n"
@@ -220,6 +225,11 @@ int _main(int argc, char** argv)
 				params->operation = OPERATION_INSTALL;
 				state.operation = state.SPECIFIED;
 			}
+			else if (option == "upgrade")
+			{
+				params->operation = OPERATION_UPGRADE;
+				state.operation = state.SPECIFIED;
+			}
 			else if (option == "list-available")
 			{
 				params->operation = OPERATION_LIST_AVAILABLE;
@@ -348,6 +358,7 @@ int _main(int argc, char** argv)
 				{
 					if (
 							params->operation == OPERATION_INSTALL ||
+							params->operation == OPERATION_UPGRADE ||
 							params->operation == OPERATION_INSTALLATION_GRAPH ||
 							params->operation == OPERATION_REMOVE ||
 							params->operation == OPERATION_REMOVAL_GRAPH ||
@@ -433,7 +444,10 @@ int _main(int argc, char** argv)
 	switch(params->operation)
 	{
 	case OPERATION_INSTALL:
-		return install_packages(params) ? 0 : 1;
+		return install_packages(params, false) ? 0 : 1;
+
+	case OPERATION_UPGRADE:
+		return install_packages(params, true) ? 0 : 1;
 
 	case OPERATION_INSTALLATION_GRAPH:
 		return print_installation_graph(params) ? 0 : 1;

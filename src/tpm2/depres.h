@@ -77,7 +77,7 @@ namespace depres
 			PackageDB& pkgdb,
 			std::shared_ptr<PackageProvider> pprov,
 			const std::vector<selected_package_t> &selected_packages,
-			bool prefer_upgrade);
+			bool upgrade_mode);
 
 
 	struct ComputeInstallationGraphResult

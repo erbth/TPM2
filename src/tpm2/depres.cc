@@ -82,7 +82,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 		PackageDB& pkgdb,
 		shared_ptr<PackageProvider> pprov,
 		const vector<selected_package_t> &selected_packages,
-		bool prefer_upgrade)
+		bool upgrade_mode)
 {
 	/* Build a map of InstalledPackageVersions from installed_packages */
 	map<pair<string, int>, shared_ptr<InstalledPackageVersion>> installed_map;
@@ -130,7 +130,9 @@ ComputeInstallationGraphResult compute_installation_graph(
 			get_package_version);
 
 	/* Depres 2 specific policy */
-	solver->set_policy(prefer_upgrade ? Policy::upgrade : Policy::keep_newer);
+	// solver->set_policy(prefer_upgrade ? Policy::upgrade : Policy::keep_newer);
+	solver->set_policy(Policy::upgrade);
+	solver->set_evaluate_all(upgrade_mode && selected_packages.empty());
 
 	/* Try to solve the update problem and returnt he result. */
 	if (solver->solve())

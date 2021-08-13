@@ -64,7 +64,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 
 	depres::ComputeInstallationGraphResult r =
 		depres::compute_installation_graph(params, installed_packages, pkgdb,
-				PackageProvider::create (params), new_packages, true);
+				PackageProvider::create (params), new_packages, false);
 
 	if (r.error)
 	{
@@ -155,7 +155,7 @@ bool print_installation_graph(shared_ptr<Parameters> params)
 }
 
 
-bool install_packages(shared_ptr<Parameters> params)
+bool install_packages(shared_ptr<Parameters> params, bool upgrade)
 {
 	print_target(params);
 
@@ -190,7 +190,7 @@ bool install_packages(shared_ptr<Parameters> params)
 
 	depres::ComputeInstallationGraphResult comp_igraph_res =
 		depres::compute_installation_graph (
-				params, installed_packages, pkgdb, pprov, new_packages, true);
+				params, installed_packages, pkgdb, pprov, new_packages, upgrade);
 
 	if (comp_igraph_res.error)
 	{

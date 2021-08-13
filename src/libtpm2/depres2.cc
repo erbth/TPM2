@@ -228,8 +228,15 @@ float Depres2Solver::compute_alpha(
 	for (const auto& file : version->get_files())
 	{
 		auto h = files.find_file(file);
-		if (h)
+
+		/* Ignore conflicts with a different version of this package */
+		if (h && h->data != pv)
+		{
+			PRINT_DEBUG("  file conflict: " << file << " (by " << h->data->get_name()
+					<< ")" << endl);
+
 			file_conflicts.insert(h->data);
+		}
 	}
 
 	if (file_conflicts.size())
@@ -372,6 +379,11 @@ void Depres2Solver::set_policy(int p)
 	policy = p;
 }
 
+void Depres2Solver::set_evaluate_all(bool enabled)
+{
+	evaluate_all = enabled;
+}
+
 bool Depres2Solver::solve()
 {
 	/* Insert the installed packages into the installation graph */
@@ -435,6 +447,13 @@ bool Depres2Solver::solve()
 
 		if (!v->version_is_satisfying())
 			insert_into_active(v.get());
+	}
+
+	/* If requested, eject all all installed packages. */
+	if (evaluate_all)
+	{
+		for (auto &t : installed_packages)
+			eject_node(*get_or_add_node(t.first->get_identifier()), true);
 	}
 
 
@@ -570,7 +589,7 @@ bool Depres2Solver::solve()
 					)
 			   )
 			{
-				/* Only remove this node if there is no selected dependee */
+				/* Only remove this node if there is no selected depender. */
 				/* Do a DFS traversal */
 				bool selected_dependee = false;
 
@@ -587,7 +606,9 @@ bool Depres2Solver::solve()
 
 					for (auto u : v->reverse_dependencies)
 					{
-						if (u->is_selected)
+						/* If we are evaluating all packages, treet the manually
+						 * installed packages as selected, too. */
+						if (u->is_selected || (evaluate_all && !u->installed_automatically))
 						{
 							selected_dependee = true;
 							break;
@@ -604,7 +625,7 @@ bool Depres2Solver::solve()
 
 					for (auto u : v->reverse_pre_dependencies)
 					{
-						if (u->is_selected)
+						if (u->is_selected || (evaluate_all && !u->installed_automatically))
 						{
 							selected_dependee = true;
 							break;
@@ -782,7 +803,7 @@ bool Depres2Solver::solve()
 				return false;
 			}
 
-			/* If the node was selected, pring an error message and fail the
+			/* If the node was selected, print an error message and fail the
 			 * computation. */
 			if (v->is_selected)
 			{

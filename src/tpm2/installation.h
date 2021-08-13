@@ -19,7 +19,10 @@ namespace depres {
 
 bool print_installation_graph(std::shared_ptr<Parameters> params);
 
-bool install_packages(std::shared_ptr<Parameters> params);
+/* @param upgrade  Upgrade the packages specified in @params (instruct the
+ *                 solver to do so) or all packages if no packages are
+ *                 specified. */
+bool install_packages(std::shared_ptr<Parameters> params, bool upgrade);
 
 bool set_installation_reason (char reason, std::shared_ptr<Parameters> params);
 

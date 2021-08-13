@@ -99,6 +99,10 @@ namespace depres
 		/* Bias for package versions to choose */
 		int policy = Policy::keep_newer;
 
+		/* If set to true, all installed packages will be ejected at the
+		 * beginning of the algorithm. */
+		bool evaluate_all = false;
+
 		/* A map of tuples (name, arch, version, alpha) which records how often
 		 * the package/version combination has been chosen with the specific
 		 * alpha during the algorithm's execution. This is used to detect loops
@@ -116,7 +120,7 @@ namespace depres
 				std::shared_ptr<PackageVersion> version,
 				int version_index, int versions_count);
 
-		/* Eject a node and optionally put it into the active set. */
+		/* Eject a node and optionally put it into the active queue. */
 		void eject_node(IGNode& v, bool put_into_active);
 
 		/* Remove unreachable nodes - a garbage collection for nodes */
@@ -135,7 +139,9 @@ namespace depres
 				cb_list_package_versions_t cb_list_package_versions,
 				cb_get_package_version_t cb_get_package_version) override;
 
+		/* Depres2 specific configuration */
 		void set_policy(int p);
+		void set_evaluate_all(bool enabled);
 
 		bool solve() override;
 		std::vector<std::string> get_errors() const override;
