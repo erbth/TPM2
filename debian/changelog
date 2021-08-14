@@ -1,3 +1,9 @@
+tpm2 (2.0.9) unstable; urgency=medium
+
+  * Added a command to show differences between database and system
+
+ -- Thomas Erbesdobler <t.erbesdobler@gmx.de>  Sat, 14 Aug 2021 07:58:50 +0200
+
 tpm2 (2.0.8) unstable; urgency=medium
 
   * Upgrading logic

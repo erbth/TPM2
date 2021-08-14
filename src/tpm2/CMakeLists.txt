@@ -10,6 +10,7 @@ add_executable(tpm2
 	stored_maintainer_scripts.cc
 	pkg_tools.cc
 	installation_package_version.cc
+	compare_system.cc
 	repo_tools.cc
 	repo_index.cc
 	standard_repo_index.cc

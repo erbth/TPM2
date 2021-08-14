@@ -13,6 +13,7 @@
 #include "utility.h"
 #include "pkg_tools.h"
 #include "repo_tools.h"
+#include "compare_system.h"
 
 extern "C" {
 #include <sys/types.h>
@@ -107,7 +108,12 @@ void print_help()
 
 "  --mark-manual           Mark the specified packages as manually installed\n\n"
 
-"  --mark-auto             Mark the specified packages as automatically installed\n\n\n"
+"  --mark-auto             Mark the specified packages as automatically installed\n\n"
+
+"  --compare-system        Compare the installed files with the files in the\n"
+"                          database. The database only stores the file type, and\n"
+"                          SHA1 checksum of regular files and target paths of\n"
+"                          symlinks, hence only these paremeters are compared.\n\n\n"
 
 
 "Repository tools:\n"
@@ -293,6 +299,11 @@ int _main(int argc, char** argv)
 			else if (option == "mark-auto")
 			{
 				params->operation = OPERATION_MARK_AUTO;
+				state.operation = state.SPECIFIED;
+			}
+			else if (option == "compare-system")
+			{
+				params->operation = OPERATION_COMPARE_SYSTEM;
 				state.operation = state.SPECIFIED;
 			}
 			else if (option == "create-index")
@@ -484,6 +495,9 @@ int _main(int argc, char** argv)
 
 	case OPERATION_MARK_AUTO:
 		return set_installation_reason (INSTALLATION_REASON_AUTO, params) ? 0 : 1;
+
+	case OPERATION_COMPARE_SYSTEM:
+		return compare_system (params) ? 0 : 1;
 
 	default:
 		printf ("Error: this operation is not yet implemented.\n");

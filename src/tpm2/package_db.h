@@ -101,6 +101,10 @@ public:
 
 	std::vector<std::string> get_config_files (std::shared_ptr<PackageMetaData> mdata);
 
+	/* Retrieve all files without package information to e.g. compare the system
+	 * to them. The files are sorted by ascending path. */
+	std::vector<PackageDBFileEntry> get_all_files_plain ();
+
 
 	/* Triggers */
 	/* Only reads the triggers if they are not present. */

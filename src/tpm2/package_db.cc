@@ -1529,6 +1529,69 @@ vector<string> PackageDB::get_config_files(shared_ptr<PackageMetaData> mdata)
 }
 
 
+vector<PackageDBFileEntry> PackageDB::get_all_files_plain ()
+{
+	vector<PackageDBFileEntry> files;
+	sqlite3_stmt *pStmt = nullptr;
+
+	try
+	{
+		auto err = sqlite3_prepare_v2 (pDb,
+				"select path, type, digest from files order by path;",
+				-1, &pStmt, nullptr);
+
+		if (err != SQLITE_OK)
+			throw sqlitedb_exception (err, pDb);
+
+
+		for (;;)
+		{
+			err = sqlite3_step (pStmt);
+
+			if (err == SQLITE_DONE)
+			{
+				break;
+			}
+			else if (err != SQLITE_ROW)
+			{
+				throw sqlitedb_exception (err, pDb);
+			}
+			else
+			{
+				if (sqlite3_column_count (pStmt) != 3)
+					throw PackageDBException ("Invalid column count while reading files.");
+
+				files.emplace_back (
+						sqlite3_column_int (pStmt, 1),
+						(const char*) sqlite3_column_text (pStmt, 0));
+
+				/* Read file digest */
+				auto digest_size = sqlite3_column_bytes(pStmt, 2);
+				if (digest_size != 0)
+				{
+					if (digest_size != 20)
+						throw PackageDBException ("Invalid digest length while reading files.");
+
+					memcpy (files.back().sha1_sum, sqlite3_column_blob (pStmt, 2), 20);
+				}
+			}
+		}
+
+		sqlite3_finalize (pStmt);
+		pStmt = nullptr;
+	}
+	catch (...)
+	{
+		if (pStmt)
+			sqlite3_finalize (pStmt);
+
+		throw;
+	}
+
+	return files;
+}
+
+
 void PackageDB::set_interested_triggers (shared_ptr<PackageMetaData> mdata)
 {
 	sqlite3_stmt *pStmt = nullptr;

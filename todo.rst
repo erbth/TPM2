@@ -19,8 +19,6 @@
   * show files of an installed package (and read files of uninstalled packages
     from repo)
 
-  * differences to system
-
   * do nothing if config file was not changed during upgrade (currently asks?)
 
   * non-transitive rdeps
