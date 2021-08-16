@@ -1138,20 +1138,36 @@ bool ll_unpack (
 
 								/* Compare the file on the system to the
 								 * information from the the database. If they
-								 * differ, exclude the config file. */
+								 * differ, exclude the config file.
+								 *
+								 * If the file was not changed in the package,
+								 * keep the installed version without asking. */
 								if (config_file_differs (params, *file))
 								{
 									printf ("    Config file `%s' was changed.\n", cfile.c_str());
 
-									if (!params->adopt_all)
+									auto inew = files->find (DummyFileRecord(cfile));
+									if (inew != files->end() &&
+											file->type == inew->type &&
+											memcmp (file->sha1_sum, inew->sha1_sum, 20) == 0)
 									{
-										printf ("    Overwrite it with the packaged version? ");
-										if (safe_query_user_input("yN") == 'n')
-											excluded_paths.push_back(cfile);
+										printf ("    Has not changed in the package(s), "
+												"keeping installed version.\n");
+
+										excluded_paths.push_back(cfile);
 									}
 									else
 									{
-										printf ("    Overwriting because of '--adopt-all\n");
+										if (!params->adopt_all)
+										{
+											printf ("    Overwrite it with the packaged version? ");
+											if (safe_query_user_input("yN") == 'n')
+												excluded_paths.push_back(cfile);
+										}
+										else
+										{
+											printf ("    Overwriting because of '--adopt-all\n");
+										}
 									}
 								}
 
