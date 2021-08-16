@@ -106,6 +106,10 @@ void print_help()
 "  --reverse-dependencies  List the packages that depend or pre-depend on the\n"
 "                          specified packages directly or indirectly.\n\n"
 
+"  --direct-reverse-dependencies  List the packages that depend or pre-depend on\n"
+"                                 the specified packages without including\n"
+"                                 transitive reverse dependencies.\n\n"
+
 "  --mark-manual           Mark the specified packages as manually installed\n\n"
 
 "  --mark-auto             Mark the specified packages as automatically installed\n\n"
@@ -291,6 +295,11 @@ int _main(int argc, char** argv)
 				params->operation = OPERATION_REVERSE_DEPENDENCIES;
 				state.operation = state.SPECIFIED;
 			}
+			else if (option == "direct-reverse-dependencies")
+			{
+				params->operation = OPERATION_DIRECT_REVERSE_DEPENDENCIES;
+				state.operation = state.SPECIFIED;
+			}
 			else if (option == "mark-manual")
 			{
 				params->operation = OPERATION_MARK_MANUAL;
@@ -377,6 +386,7 @@ int _main(int argc, char** argv)
 							params->operation == OPERATION_MARK_AUTO ||
 							params->operation == OPERATION_SHOW_VERSION ||
 							params->operation == OPERATION_REVERSE_DEPENDENCIES ||
+							params->operation == OPERATION_DIRECT_REVERSE_DEPENDENCIES ||
 							params->operation == OPERATION_LIST_AVAILABLE
 					   )
 					{
@@ -479,7 +489,10 @@ int _main(int argc, char** argv)
 		return list_installed_packages(params) ? 0 : 1;
 
 	case OPERATION_REVERSE_DEPENDENCIES:
-		return list_reverse_dependencies(params) ? 0 : 1;
+		return list_reverse_dependencies(params, true) ? 0 : 1;
+
+	case OPERATION_DIRECT_REVERSE_DEPENDENCIES:
+		return list_reverse_dependencies(params, false) ? 0 : 1;
 
 	case OPERATION_SHOW_VERSION:
 		return show_version (params) ? 0 : 1;

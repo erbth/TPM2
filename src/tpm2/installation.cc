@@ -1422,7 +1422,7 @@ bool print_removal_graph (shared_ptr<Parameters> params, bool autoremove)
 }
 
 
-bool list_reverse_dependencies (shared_ptr<Parameters> params)
+bool list_reverse_dependencies (shared_ptr<Parameters> params, bool transitive)
 {
 	print_target (params);
 
@@ -1486,13 +1486,43 @@ bool list_reverse_dependencies (shared_ptr<Parameters> params)
 	/* Sort print the the packages from the removal graph. */
 	vector<pair<string, int>> pkgs;
 
-	for (auto node : g.V)
+	if (transitive)
 	{
-		/* Don't include the packages for which the user asked to get the
-		 * reverse dependencies. The removal graph will contain them, of course.
-		 * */
-		if (pkg_ids.find (make_pair (node->pkg->name, node->pkg->architecture)) == pkg_ids.end())
-			pkgs.push_back (make_pair (node->pkg->name, node->pkg->architecture));
+		for (auto node : g.V)
+		{
+			/* Don't include the packages for which the user asked to get the
+			 * reverse dependencies. The removal graph will contain them, of course.
+			 * */
+			if (pkg_ids.find (make_pair (node->pkg->name, node->pkg->architecture)) == pkg_ids.end())
+				pkgs.push_back (make_pair (node->pkg->name, node->pkg->architecture));
+		}
+	}
+	else
+	{
+		/* Find specified packages and identify their reverse dependencies */
+		for (auto v : g.V)
+		{
+			if (pkg_ids.find (make_pair (v->pkg->name, v->pkg->architecture)) != pkg_ids.end())
+			{
+				for (auto u : v->provided)
+				{
+					auto identifier = make_pair (u->pkg->name, u->pkg->architecture);
+
+					/* Exclude specified packages (part of cycles) */
+					if (pkg_ids.find (identifier) == pkg_ids.end())
+						pkgs.push_back (identifier);
+				}
+
+				for (auto u : v->pre_provided)
+				{
+					auto identifier = make_pair (u->pkg->name, u->pkg->architecture);
+
+					/* Exclude specified packages (part of cycles) */
+					if (pkg_ids.find (identifier) == pkg_ids.end())
+						pkgs.push_back (identifier);
+				}
+			}
+		}
 	}
 
 	sort (pkgs.begin(), pkgs.end());

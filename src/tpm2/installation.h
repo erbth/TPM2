@@ -87,7 +87,7 @@ bool system_state_accepted_for_install (
 
 /***************************** Removing packages ******************************/
 bool print_removal_graph (std::shared_ptr<Parameters> params, bool autoremove);
-bool list_reverse_dependencies (std::shared_ptr<Parameters> params);
+bool list_reverse_dependencies (std::shared_ptr<Parameters> params, bool transitive);
 
 /* If autoremove is true, packages that are not required by manually installed
  * packages directly or indirectly after the specified packages were removed

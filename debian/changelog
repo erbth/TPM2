@@ -1,3 +1,11 @@
+tpm2 (2.0.9+1) unstable; urgency=medium
+
+  * Don't ask if config files should be updated when they did not change in
+  the packages
+  * List only direct reverse dependencies
+
+ -- Thomas Erbesdobler <t.erbesdobler@gmx.de>  Mon, 16 Aug 2021 03:09:35 +0200
+
 tpm2 (2.0.9) unstable; urgency=medium
 
   * Added a command to show differences between database and system
