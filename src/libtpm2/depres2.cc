@@ -254,8 +254,20 @@ float Depres2Solver::compute_alpha(
 	case Policy::strong_selective_upgrade:
 		if (pv->is_selected)
 		{
-			b = ((float) version_index + 0.9f) / versions_count;
-			b = (b * b * b) * 50.f;
+			int N = min(5, versions_count);
+			int N_start = versions_count - N;
+
+			if (version_index < N_start)
+			{
+				b = (((float) version_index + 0.9f) / N_start) * 0.3f;
+			}
+			else
+			{
+				b = ((float) (version_index - N_start) + 0.9f) / N;
+				b = b * b * b * 0.7f + 0.3f;
+			}
+
+			b = b * 50.f;
 		}
 		else
 		{

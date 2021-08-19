@@ -1,3 +1,9 @@
+tpm2 (2.0.9+2) unstable; urgency=medium
+
+  * Make strongly selective upgrade more selective 
+
+ -- Thomas Erbesdobler <t.erbesdobler@gmx.de>  Thu, 19 Aug 2021 18:49:44 +0200
+
 tpm2 (2.0.9+1) unstable; urgency=medium
 
   * Don't ask if config files should be updated when they did not change in
