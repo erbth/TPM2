@@ -16,6 +16,8 @@
 'Wishlist'
 ---
 
+  * maybe reset env after fork to execute maintainer scripts
+
   * show files of an installed package (and read files of uninstalled packages
     from repo)
 
