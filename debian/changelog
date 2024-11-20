@@ -1,3 +1,9 @@
+tpm2 (2.0.10) unstable; urgency=medium
+
+  * Fixed segfault in depres
+
+ -- Thomas Erbesdobler <t.erbesdobler@gmx.de>  Wed, 20 Nov 2024 04:20:39 +0100
+
 tpm2 (2.0.9+2) unstable; urgency=medium
 
   * Make strongly selective upgrade more selective 

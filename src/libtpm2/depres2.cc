@@ -337,7 +337,7 @@ void Depres2Solver::remove_unreachable_nodes()
 		PRINT_DEBUG("Garbage collecting node " << v->identifier_to_string() << "." << endl);
 
 		auto dependencies = v->dependencies;
-		dependencies.insert(v->dependencies.end(),
+		dependencies.insert(dependencies.end(),
 				v->pre_dependencies.begin(), v->pre_dependencies.end());
 
 		/* Remove node */
