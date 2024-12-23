@@ -57,6 +57,8 @@ void print_help()
 
 "  --verbose               Enable verbose output\n\n"
 
+"  --depres2-debug-log     Enable debug log of depres2\n\n"
+
 "  --install               Install or uprade the specified packages\n\n"
 
 "  --upgrade               If packages are specified, install or upgrade them\n"
@@ -82,7 +84,7 @@ void print_help()
 "  --remove                Remove specified packages and their config files if\n"
 "                          they were not modified\n\n"
 
-"  --removal_graph         Prints the entire removal graph, which determines the\n"
+"  --removal-graph         Prints the entire removal graph, which determines the\n"
 "                          packages that will be removed when a particular one is\n"
 "                          requested to be removed and in which order, if no\n"
 "                          package is specified. If one is specified this prints\n"
@@ -221,6 +223,10 @@ int _main(int argc, char** argv)
 			else if (option == "verbose")
 			{
 				params->verbose = true;
+			}
+			else if (option == "depres2-debug-log")
+			{
+				params->depres2_debug_log = true;
 			}
 			else if (option == "adopt-all")
 			{

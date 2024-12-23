@@ -12,16 +12,9 @@
 
 using namespace std;
 
-// #define LOG_DEBUG
-
 /* Some macros for printing to the console */
 #define PRINT_WARNING(X) (cerr << "Depres2: Warning: " << X)
-
-#ifdef LOG_DEBUG
-#define PRINT_DEBUG(X) (cout << "Depres2: Debug: " << X)
-#else
-#define PRINT_DEBUG(X)
-#endif
+#define PRINT_DEBUG(X) if (debug_log_enabled) {cout << "Depres2: Debug: " << X;}
 
 namespace depres
 {
@@ -866,6 +859,12 @@ installation_graph_t Depres2Solver::get_G()
 	previous_versions.clear();
 
 	return move(G);
+}
+
+
+void Depres2Solver::enable_debug_log(bool enabled)
+{
+	debug_log_enabled = enabled;
 }
 
 }

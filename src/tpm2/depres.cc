@@ -117,6 +117,7 @@ ComputeInstallationGraphResult compute_installation_graph(
 
 	/* Create solver */
 	auto solver = dynamic_pointer_cast<Depres2Solver>(create_solver("depres2"));
+	solver->enable_debug_log(params->depres2_debug_log);
 
 	/* Set solver parameters */
 	vector<pair<shared_ptr<PackageVersion>, bool>> adapted_installed_packages;

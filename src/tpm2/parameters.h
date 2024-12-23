@@ -77,6 +77,9 @@ struct Parameters
 	/* Verbose output */
 	bool verbose = false;
 
+	/* Depres2 debug log */
+	bool depres2_debug_log = false;
+
 	/* Parameters for repository tools */
 	std::string create_index_repo;
 	std::string create_index_name = "index";

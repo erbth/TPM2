@@ -134,6 +134,9 @@ namespace depres
 		/* Formating error messages */
 		void format_loop_error_message();
 
+		/* Debug log */
+		bool debug_log_enabled = false;
+
 	public:
 		virtual ~Depres2Solver() {}
 
@@ -152,6 +155,10 @@ namespace depres
 
 		/* This will move the installation graph. */
 		installation_graph_t get_G() override;
+
+
+		/* Enabled debug log */
+		void enable_debug_log(bool) override;
 	};
 }
 

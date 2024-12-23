@@ -161,6 +161,10 @@ namespace depres
 
 		/* This will move the installation graph. */
 		virtual installation_graph_t get_G() = 0;
+
+
+		/* Enable debug log */
+		virtual void enable_debug_log(bool) = 0;
 	};
 
 	/* Render the installation graph as string in dot-format. WARNING: This
