@@ -241,7 +241,14 @@ float Depres2Solver::compute_alpha(
 	switch (policy)
 	{
 	case Policy::upgrade:
-		b = (float) version_index / versions_count;
+		if (version_index >= versions_count - 20)
+		{
+			b = (1.f - (versions_count - version_index) / 20.f) * 0.8f + 0.2f;
+		}
+		else
+		{
+			b = version_index / (versions_count - 20.f) * 0.2f;
+		}
 		break;
 
 	case Policy::strong_selective_upgrade:
@@ -264,7 +271,14 @@ float Depres2Solver::compute_alpha(
 		}
 		else
 		{
-			b = (float) version_index / versions_count;
+			if (version_index >= versions_count - 20)
+			{
+				b = (1.f - (versions_count - version_index) / 20.f) * 0.8f + 0.2f;
+			}
+			else
+			{
+				b = version_index / (versions_count - 20.f) * 0.2f;
+			}
 		}
 		break;
 

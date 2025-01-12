@@ -1,3 +1,9 @@
+tpm2 (2.0.12) unstable; urgency=medium
+
+  * a more locally-oriented upgrade bias function for depres2
+
+ -- Thomas Erbesdobler <t.erbesdobler@gmx.de>  Sun, 12 Jan 2025 20:40:49 +0100
+
 tpm2 (2.0.10) unstable; urgency=medium
 
   * Fixed segfault in depres
